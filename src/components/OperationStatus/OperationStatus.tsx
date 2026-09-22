@@ -1,13 +1,13 @@
 // OperationStatus.tsx
 import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import PanelFrame from '../common/PanelFrame'
-import type { Theme } from '../../types'
+import type { Theme, ThemeMode } from '../../types'
 
 import RobotHeaderBadge from './RobotHeaderBadge'
 import AxisRow, { type AxisRowData, type AxisSideData } from './AxisRow'
 import AxisTable from './AxisTable'
 import AverageSpeedGauge from './AverageSpeedGauge'
-import RobotAxisDiagram, { AXIS_NAMES, AXIS_DISPLAY_ORDER, IMAGE_JOINT_Y, computeContainRect, type AxisName } from './RobotAxisDiagram'
+import RobotAxisDiagram, { AXIS_NAMES, AXIS_DISPLAY_ORDER, IMAGE_JOINT_X, IMAGE_JOINT_Y, computeContainRect, type AxisName } from './RobotAxisDiagram'
 import { RB1_COLOR, RB2_COLOR } from './robotColors'
 
 import './OperationStatus.css'
@@ -29,6 +29,7 @@ export interface RobotStat {
 
 interface OperationStatusProps {
   theme: Theme
+  themeMode: ThemeMode
   imageUrl?: string
   robotRB1: RobotStat
   robotRB2: RobotStat
@@ -43,14 +44,22 @@ const THRESHOLD = 80
 const WARNING_RELEASE_THRESHOLD = 70
 const WARNING_RELEASE_DELAY_MS = 3000
 
+// カード側の接続点から少し水平に伸ばしてから関節へ折れ曲がる「エルボー」形状にする
+// ことで、線が必ずカードの端の縦方向中央から水平に出ているように見せる
+// （直線1本だけだと、着地点の高さ次第で「中央から出ていない」ように見えてしまうため）。
+const CONNECTOR_STUB = 20
+
 interface ConnectorLine {
   axis: AxisName
-  left: { x1: number; y1: number; x2: number; y2: number }
-  right: { x1: number; y1: number; x2: number; y2: number }
+  /** RB1カード（右端中央）→模式図の関節へのエルボー折れ線のSVG path */
+  leftPath: string
+  /** RB2カード（左端中央）→模式図の関節へのエルボー折れ線のSVG path */
+  rightPath: string
 }
 
 export default function OperationStatus({
   theme,
+  themeMode,
   robotRB1,
   robotRB2,
   isEditing,
@@ -64,10 +73,8 @@ export default function OperationStatus({
   const rb2Color = customColors.rb2 ?? RB2_COLOR
   const handleResetColors = () => setCustomColors({})
 
-  // 模式図画像（ROBOT_DARK.png / ROBOT_LIGHT.png）の出し分け。
-  // 背景色（テーマの明暗）に応じて切り替える想定だが、Theme型に明暗フラグが
-  // ない場合はここを実際のテーマ判定に置き換えること（現状はdark固定）。
-  const robotImageMode: 'dark' | 'light' = 'dark'
+  // テーマの明暗に合わせてロボット画像も切り替える。
+  const robotImageMode = themeMode
 
   // 軸名称はS/L/U/R/B/T固定（安川協働ロボットの実際の関節位置に対応させるため、
   // 数字のラベルや編集パネルでの名称変更は廃止した）
@@ -203,23 +210,27 @@ export default function OperationStatus({
         const rb2Card = rb2Cards[index]
         if (!rb1Card || !rb2Card) return []
 
-        const imageY = imageRect.top - gridRect.top + imageRect.height * IMAGE_JOINT_Y[name]
+        // 接続線の終点は、画像の左右端ではなく「画像内の実際の関節位置」
+        // （IMAGE_JOINT_X・IMAGE_JOINT_Y）に合わせる。以前はX座標を持たず画像の
+        // 左右端に固定していたため、腕が左右に曲がっている新しいロボット画像では
+        // 実際の関節（S/L/U/R/B/T）の位置と接続線の着地点がズレていた。
+        const jointX = imageRect.left - gridRect.left + imageRect.width * IMAGE_JOINT_X[name]
+        const jointY = imageRect.top - gridRect.top + imageRect.height * IMAGE_JOINT_Y[name]
         const rb1Rect = rb1Card.getBoundingClientRect()
         const rb2Rect = rb2Card.getBoundingClientRect()
+
+        // RB1側の起点＝カード右端の縦方向中央。RB2側の起点＝カード左端の縦方向中央。
+        const rb1X = rb1Rect.right - gridRect.left
+        const rb1Y = rb1Rect.top - gridRect.top + rb1Rect.height / 2
+        const rb2X = rb2Rect.left - gridRect.left
+        const rb2Y = rb2Rect.top - gridRect.top + rb2Rect.height / 2
+
         return [{
           axis: name,
-          left: {
-            x1: rb1Rect.right - gridRect.left,
-            y1: rb1Rect.top - gridRect.top + rb1Rect.height / 2,
-            x2: imageRect.left - gridRect.left,
-            y2: imageY,
-          },
-          right: {
-            x1: imageRect.left + imageRect.width - gridRect.left,
-            y1: imageY,
-            x2: rb2Rect.left - gridRect.left,
-            y2: rb2Rect.top - gridRect.top + rb2Rect.height / 2,
-          },
+          // 起点からまずSTUB分だけ水平に伸ばし（＝カード端の中央から水平に出ている
+          // ことが見た目にもはっきり分かるようにする）、その後関節位置まで直線で結ぶ。
+          leftPath: `M ${rb1X} ${rb1Y} H ${rb1X + CONNECTOR_STUB} L ${jointX} ${jointY}`,
+          rightPath: `M ${rb2X} ${rb2Y} H ${rb2X - CONNECTOR_STUB} L ${jointX} ${jointY}`,
         }]
       })
       setConnectorLines(lines)
@@ -335,26 +346,22 @@ export default function OperationStatus({
                 viewBox={`0 0 ${gridSize.width} ${gridSize.height}`}
                 aria-hidden="true"
               >
-                {connectorLines.map(({ axis, left, right }) => {
+                {connectorLines.map(({ axis, leftPath, rightPath }) => {
                   const name = axis
                   const axisIndex = AXIS_NAMES.indexOf(name)
                   const isWarning = warningAxes[axisIndex] ?? false
                   return (
                     <g key={name}>
-                    <line
-                      x1={left.x1}
-                      y1={left.y1}
-                      x2={left.x2}
-                      y2={left.y2}
+                    <path
+                      d={leftPath}
+                      fill="none"
                       vectorEffect="non-scaling-stroke"
                       className={`axis-monitor__connector-line${isWarning ? ' axis-monitor__connector-line--warning' : ''}`}
                       style={isWarning ? undefined : { stroke: rb1Color }}
                     />
-                    <line
-                      x1={right.x1}
-                      y1={right.y1}
-                      x2={right.x2}
-                      y2={right.y2}
+                    <path
+                      d={rightPath}
+                      fill="none"
                       vectorEffect="non-scaling-stroke"
                       className={`axis-monitor__connector-line${isWarning ? ' axis-monitor__connector-line--warning' : ''}`}
                       style={isWarning ? undefined : { stroke: rb2Color }}

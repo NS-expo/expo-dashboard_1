@@ -8,12 +8,14 @@
 // 2：刃物取外
 // 3：検査
 // 4：検査結果OK？
-// 5：刃物交換（検査結果によっては飛ばされる）
-// 6：刃物ストックへ返却
-// 7：動作準備
+// 5：OK（検査結果OKの場合）
+// 6：NG（検査結果NGの場合）
+// 7：刃物交換（検査結果によっては飛ばされる）
+// 8：刃物ストックへ返却
+// 9：動作準備
 
-/** 全体フローの現在工程ステップ（D15004） */
-export const JOB_FLOW_STEP_ADDRESS = 15004
+/** 全体フローの現在工程ステップ（D15000） */
+export const JOB_FLOW_STEP_ADDRESS = 15000
 
 /** usePlcWebSocket の selectedAddresses にまとめて渡すための一覧 */
 export const JOB_FLOW_ADDRESSES = [JOB_FLOW_STEP_ADDRESS]
@@ -24,7 +26,9 @@ export const JOB_FLOW_STEP_LABELS: Record<number, string> = {
   2: '刃物取外',
   3: '検査',
   4: '検査結果OK？',
-  5: '刃物交換',
-  6: '刃物ストックへ返却',
-  7: '動作準備',
+  5: 'OK',
+  6: 'NG',
+  7: '刃物交換',
+  8: '刃物ストックへ返却',
+  9: '動作準備',
 }

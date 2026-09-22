@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import PanelFrame from '../common/PanelFrame'
 import JobFlowDiagram from './JobFlowDiagram'
 import { useIsMobile } from '../../hooks/useMediaQuery'
-import { useCycleHistory, type CycleStatus } from '../../hooks/useCycleHistory'
+import type { CycleRecord, CycleStatus } from '../../hooks/useCycleHistory'
 import type { Theme } from '../../types'
 import './OperationResults.css'
 
@@ -45,19 +45,19 @@ interface OperationResultsProps {
   activeStep?: number
   /** 稼働実績（異常回数・上刃挿入回数・取付実行回数・取出実行回数・検査OK/NG）の日別データ */
   metrics: MetricPoint[]
-  /** 全体サイクルタイム（秒）。PLCのDレジスタ（未定）またはコード側の蓄積値から算出。サイクル履歴（⑤）の集計に使用。 */
-  overallCycleTimeSec?: number
-  /** 稼働時間（秒）。PLCのDレジスタ（未定）から取得する稼働継続時間。KPIカードに表示するのみで、
-   *  日別実績の棒グラフには含めない（旧・検査回数カードの位置に表示）。 */
+  /** 稼働時間（秒）。usePlcCycleSignals().uptimeTotalSec（D15002時／D15004分から算出）を渡す。
+   *  KPIカードに表示するのみで、日別実績の棒グラフには含めない（旧・検査回数カードの位置に表示）。 */
   operatingTimeSec?: number
-  /** 取付サイクルの現在サイクルタイム（秒）。PLCのDレジスタ（未定）から取得予定。未指定時は overallCycleTimeSec を使用。 */
+  /** 取付サイクルの現在サイクルタイム（秒）。usePlcCycleSignals().tightenCycleTimeSec（D15032/15034）。 */
   tightenCycleTimeSec?: number
-  /** 取付サイクルのベストサイクルタイム（秒）。コード側の蓄積値から算出予定。 */
+  /** 取付サイクルのベストサイクルタイム（秒）。usePlcCycleSignals().tightenBestCycleTimeSec（D15052/15054、PLC側で保持）。 */
   tightenBestCycleTimeSec?: number
-  /** 取出サイクルの現在サイクルタイム（秒）。PLCのDレジスタ（未定）から取得予定。未指定時は overallCycleTimeSec を使用。 */
+  /** 取出サイクルの現在サイクルタイム（秒）。usePlcCycleSignals().loosenCycleTimeSec（D15036/15038）。 */
   loosenCycleTimeSec?: number
-  /** 取出サイクルのベストサイクルタイム（秒）。コード側の蓄積値から算出予定。 */
+  /** 取出サイクルのベストサイクルタイム（秒）。usePlcCycleSignals().loosenBestCycleTimeSec（D15056/15058、PLC側で保持）。 */
   loosenBestCycleTimeSec?: number
+  /** サイクル履歴（直近5件、発生順）。usePlcCycleSignals().cycleHistory（D15200〜／D15014〜）をそのまま渡す。 */
+  cycleHistory?: CycleRecord[]
   /** PLCのNG判定信号（true = NG検出中） */
   ngSignal?: boolean
   /** 刃物画像のURL。後から差替え可能な構造にするため、固定値ではなくpropsで受け取る */
@@ -66,8 +66,6 @@ interface OperationResultsProps {
    *  PLCアドレス未定のため未指定時はサンプル値を使用 */
   hourlyTrend?: HourlyTrendPoint[]
   onEditingChange: (value: boolean) => void
-    /** サイクル終了時刻（PLC生値）。サイクル履歴の完了検知に使用 */
-  cycleEndTimeRaw?: number
 }
 
 const CHART_W = 560
@@ -166,10 +164,15 @@ function formatHms(sec?: number) {
   return `${pad(h)}：${pad(m)}：${pad(s)}`
 }
 
-/** 稼働時間カード表示用：秒 → "□.□h"（時間の小数第1位まで） */
-function formatOperatingHours(sec?: number) {
-  if (sec === undefined || sec === null || sec < 0 || Number.isNaN(sec)) return '--h'
-  return `${(sec / 3600).toFixed(1)}h`
+/** 稼働時間カード表示用：秒 → "□□：□□"（時：分）。
+ *  PLC側がD15002(時)・D15004(分)を別々に持っているのに合わせた表記。 */
+function formatOperatingTime(sec?: number) {
+  if (sec === undefined || sec === null || sec < 0 || Number.isNaN(sec)) return '--：--'
+  const total = Math.floor(sec)
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(h)}：${pad(m)}`
 }
 
 /** 指定した時刻を30分単位に切り捨てて "HH:MM" ラベルを返す。
@@ -214,7 +217,6 @@ export default function OperationResults({
   isEditing,
   activeStep,
   metrics,
-  overallCycleTimeSec,
   operatingTimeSec,
   tightenCycleTimeSec,
   tightenBestCycleTimeSec,
@@ -223,7 +225,7 @@ export default function OperationResults({
   ngSignal,
   bladeImageUrl,
   hourlyTrend,
-  cycleEndTimeRaw,
+  cycleHistory,
   onEditingChange,  
 }: OperationResultsProps) {
   const isMobile = useIsMobile()
@@ -238,8 +240,9 @@ export default function OperationResults({
     return () => window.clearInterval(timer)
   }, [])
 
-  /** サイクル履歴（⑤） */
-   const { history } = useCycleHistory(overallCycleTimeSec, cycleEndTimeRaw)
+  /** サイクル履歴（⑤）。PLC側が直近5件を保持するようになったため、算出は呼び出し元
+   *  （usePlcCycleSignals）で行い、ここでは整形済みの配列を受け取るだけにしている。 */
+  const history = cycleHistory ?? []
 
   /** 新規追加された行だけにスライドインアニメーションを付ける */
   const [flashNo, setFlashNo] = useState<number | null>(null)
@@ -397,7 +400,6 @@ const hourlyData = useMemo(() => {
     activeStep,
     ngSignal,
     isMobile,
-    overallCycleTimeSec,
     operatingTimeSec,
     tightenCycleTimeSec,
     tightenBestCycleTimeSec,
@@ -411,7 +413,8 @@ const hourlyData = useMemo(() => {
   /** サイクルタイム（取付／取出）：2枚のカードを横並びにし、各カード内はサイクル対象名／BESTタイム／
    *  現在タイムを縦に3行で表示する。棒グラフの色分けと混同しないよう色は付けず、BESTタイムのみ強調色・
    *  やや小さめのフォントで表示する（"BEST"の文字はさらに一段小さく）。
-   *  取付／取出それぞれのサイクルタイムPLCアドレスが未定の間は overallCycleTimeSec をフォールバックとして使用する。 */
+   *  取付／取出それぞれのサイクルタイム・ベストタイムはD15032〜／D15052〜（config/cycleAddresses.ts）
+   *  でPLCから確定アドレスが取れるようになったため、フォールバックは廃止した。 */
   const cycleTimeSection = (
      <div className="op-results__cycletime-section">
       <span
@@ -436,7 +439,7 @@ const hourlyData = useMemo(() => {
             {formatHms(tightenBestCycleTimeSec)}
           </span>
           <span className="op-results__cycletime-current" style={{ color: theme.text }}>
-            {formatHms(tightenCycleTimeSec ?? overallCycleTimeSec)}
+            {formatHms(tightenCycleTimeSec)}
           </span>
         </div>
          <div
@@ -454,7 +457,7 @@ const hourlyData = useMemo(() => {
             {formatHms(loosenBestCycleTimeSec)}
           </span>
           <span className="op-results__cycletime-current" style={{ color: theme.text }}>
-            {formatHms(loosenCycleTimeSec ?? overallCycleTimeSec)}
+            {formatHms(loosenCycleTimeSec)}
           </span>
         </div>
       </div>
@@ -469,7 +472,7 @@ const hourlyData = useMemo(() => {
       </span>
       <span className="op-results__kpi-value-wrap">
         <span className="op-results__kpi-value" style={{ color: theme.text }}>
-          {formatOperatingHours(operatingTimeSec)}
+          {formatOperatingTime(operatingTimeSec)}
         </span>
       </span>
     </div>

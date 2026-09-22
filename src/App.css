@@ -53,6 +53,7 @@
   white-space: nowrap;
   margin-right: 6px;
 }
+
 .app-header__status-dot {
   display: inline-block;
   width: 10px;
@@ -62,20 +63,34 @@
   box-shadow: 0 0 6px currentColor;
   flex-shrink: 0;
   position: relative;
-  top: 0.5px; /* ← 微調整用。ズレの向きに応じて +/- や数値を変えてください */
+  top: 0.5px;
+
+  /* 常時点滅 */
+  animation: app-status-dot-flicker 2s ease-in-out infinite;
 }
 
+/* 注意 */
+.app-header__status-dot.is-warning {
+  animation-duration: 1s;
+}
+
+/* 異常 */
 .app-header__status-dot.is-abnormal {
-  animation: app-status-dot-flicker 1s ease-in-out infinite;
+  animation-duration: 0.4s;
 }
 
 @keyframes app-status-dot-flicker {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.3; }
+  0%, 100% {
+    opacity: 1;
+  }
+
+  50% {
+    opacity: 0.2;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .app-header__status-dot.is-abnormal {
+  .app-header__status-dot {
     animation: none;
   }
 }

@@ -15,11 +15,14 @@ import { usePlcRobotStatusSignals } from './hooks/usePlcRobotStatusSignals'
 import { usePlcOperationMetricsSignals } from './hooks/usePlcOperationMetricsSignals'
 import { useOperationHourlyTrend } from './hooks/useOperationHourlyTrend'
 import { usePlcJobFlowSignals, JOB_FLOW_ADDRESSES } from './hooks/usePlcJobFlowSignals'
+import { usePlcCycleSignals } from './hooks/usePlcCycleSignals'
 import { OPERATION_METRICS_ADDRESSES } from './config/operationMetricsAddresses'
+import { CYCLE_ADDRESSES } from './config/cycleAddresses'
 import { getRecentDates, METRIC_DAYS } from './utils/dateRange'
 import { ALL_ROBOT_STATUS_ADDRESSES } from './config/robotStatusAddresses'
 import PlcConnectionIcon from './components/common/PlcConnectionIcon'
 import { usePlcConnectionStatus } from './hooks/usePlcConnectionStatus'
+import { usePlcRunStatusSignals, RUN_STATUS_ADDRESSES } from './hooks/usePlcRunStatusSignals'
 
 // 稼働状況（anomalyページ）用のサンプルデータ
 // RB1・RB2は同一機種のため、画像は1枚を共通で使用する
@@ -136,7 +139,7 @@ export default function App() {
   const headerRef = useRef<HTMLElement>(null)
   const mode = getThemeMode(themeKey)
   const isMobile = useIsMobile()
-  const [dashboardStatus, setDashboardStatus] = useState<CameraStatus>('運転')
+  const [, setDashboardStatus] = useState<CameraStatus>('停止')
 
   const STATUS_DOT_COLOR: Record<CameraStatus, string> = {
     '運転': '#4ade80',
@@ -194,10 +197,26 @@ export default function App() {
       ...ALL_ROBOT_STATUS_ADDRESSES,
       ...OPERATION_METRICS_ADDRESSES,
       ...JOB_FLOW_ADDRESSES,
+      ...CYCLE_ADDRESSES,
+      ...RUN_STATUS_ADDRESSES,
     ],
   })
 
   const { activeStep } = usePlcJobFlowSignals(plcData)
+  const {
+    uptimeTotalSec,
+    tightenCycleTimeSec,
+    tightenBestCycleTimeSec,
+    loosenCycleTimeSec,
+    loosenBestCycleTimeSec,
+    cycleHistory,
+  } = usePlcCycleSignals(plcData)
+  const { status: runStatus } = usePlcRunStatusSignals(plcData)
+
+// D15018はRB1・RB2共通の1つの値なので、両カメラIDに同じ値を適用する
+const plcStatusById = runStatus
+  ? { 'cam-1': runStatus, 'cam-2': runStatus }
+  : undefined
 
   // RB1・RB2のトルク値・ピーク値・稼働率（PLC Dレジスタは未定のため現状は常に0が返る想定。
   // 確定するまではサンプル値をフォールバックとして使用する）
@@ -216,28 +235,43 @@ export default function App() {
     loosenCount,
     okCount,
     ngCount,
-    ngSignal,
-    cycleTimeSec,
-    cycleStartTimeRaw,
-    cycleEndTimeRaw,
+    ngSignal: plcNgSignal,
   } = usePlcOperationMetricsSignals(plcData)
 
-  // サイクル開始時刻が3分以上変化しなければPLC未接続とみなす
-  const isPlcConnected = usePlcConnectionStatus(cycleStartTimeRaw)
+  // 全体フローの判定はD15000の瞬間値で確定する（5=OK、6=NG）。
+  // 7〜9へ進んだ後も、次サイクル開始（1）まで判定結果を表示し続ける。
+  const [overallNgSignal, setOverallNgSignal] = useState<boolean | undefined>(undefined)
+  useEffect(() => {
+    if (activeStep === 5) {
+      setOverallNgSignal(false)
+    } else if (activeStep === 6) {
+      setOverallNgSignal(true)
+    } else if (activeStep === 1) {
+      setOverallNgSignal(undefined)
+    }
+  }, [activeStep])
+
+  // NG判定アドレスは仮値のため、全体フロー表示では使用しない。
+  void plcNgSignal
+
+  // 現在はD15000の工程値の変化をPLC応答の目安として監視する
+  const isPlcConnected = usePlcConnectionStatus(activeStep)
 
   const hourlyTrendPoints = useOperationHourlyTrend(anomalyCount, tightenCount, loosenCount)
 
   // ヘッダー右側の運転状況表示：接続アイコン＋色付きドットのみ（ラベル文字は廃止）
+  // PLC値が未受信、またはD15018=0（状態マップ外）の場合は停止とみなす。
+  const headerStatus: CameraStatus = runStatus ?? '停止'
   const statusDot = (
     <span className="app-header__status-wrap">
       <PlcConnectionIcon connected={isPlcConnected} />
       <span
-        className={`app-header__status-dot${dashboardStatus === '異常' ? ' is-abnormal' : ''}`}
+        className={`app-header__status-dot${headerStatus === '異常' ? ' is-abnormal' : ''}`}
         style={{
-          backgroundColor: STATUS_DOT_COLOR[dashboardStatus],
-          color: STATUS_DOT_COLOR[dashboardStatus],
+          backgroundColor: STATUS_DOT_COLOR[headerStatus],
+          color: STATUS_DOT_COLOR[headerStatus],
         }}
-        title={`運転状況：${dashboardStatus}`}
+        title={`運転状況：${headerStatus}`}
       />
     </span>
   )
@@ -512,9 +546,10 @@ export default function App() {
             theme={theme}
             isEditing={isEditing}
             onEditingChange={setIsEditing}
+            plcStatusById={plcStatusById} 
             onStatusChange={setDashboardStatus}
             activeStep={activeStep}
-            ngSignal={ngSignal}
+            ngSignal={overallNgSignal}
           />
         </div>
 
@@ -524,9 +559,13 @@ export default function App() {
             metrics={liveMetrics}
             isEditing={isEditing}
             activeStep={activeStep}
-            overallCycleTimeSec={cycleTimeSec}
-            cycleEndTimeRaw={cycleEndTimeRaw}
-            ngSignal={ngSignal}
+            operatingTimeSec={uptimeTotalSec}
+            tightenCycleTimeSec={tightenCycleTimeSec}
+            tightenBestCycleTimeSec={tightenBestCycleTimeSec}
+            loosenCycleTimeSec={loosenCycleTimeSec}
+            loosenBestCycleTimeSec={loosenBestCycleTimeSec}
+            cycleHistory={cycleHistory}
+            ngSignal={overallNgSignal}
             hourlyTrend={hourlyTrendPoints}
             bladeImageUrl={SHARED_ROBOT_IMAGE_URL}
             onEditingChange={setIsEditing}
@@ -536,6 +575,7 @@ export default function App() {
         <div className="dashboard-page" style={{ display: currentPage === 'anomaly' ? 'flex' : 'none' }}>
           <OperationStatus
             theme={theme}
+            themeMode={mode}
             imageUrl={SHARED_ROBOT_IMAGE_URL}
             robotRB1={robotRB1}
             robotRB2={robotRB2}

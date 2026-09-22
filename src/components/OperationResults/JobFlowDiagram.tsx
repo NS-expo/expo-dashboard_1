@@ -26,6 +26,12 @@ const NG_COLOR = '#d9713c'
 //   NO （NG） … 刃物交換 → 刃物ストックへ返却
 // → 動作準備 → （先頭「刃物取付」へループ）
 //
+// D15000（config/jobFlowAddresses.ts）の確定値：
+// 1:刃物取付 2:刃物取外 3:検査 4:検査結果OK？ 5:OK 6:NG 7:刃物交換 8:刃物ストックへ返却 9:動作準備
+// 5(OK)・6(NG)はPLCが判定確定の瞬間だけ送る値で、進捗（n/m工程）には含めない。
+// 表示上は専用ノードを設けず、従来どおり検査結果ノード（ov-d）をOK/NGの色付きチップに
+// 差し替えるresolvedChipの仕組みで表現する（resolved判定にはngSignalを使用。
+// activeStepの5/6は瞬間値のためそれだけでは7〜9到達後にOK/NGを区別できない）。
 // 検査結果に到達したら判定信号に応じて後続工程を表示する。
 // NOは刃物交換を経由し、YESは刃物交換を飛ばして刃物ストックへ返却する。
 const OVERALL_FLOW: FlowNodeDef[] = [
@@ -33,9 +39,9 @@ const OVERALL_FLOW: FlowNodeDef[] = [
   { id: 'ov-3', kind: 'process', label: '刃物取外', plcStep: 2 },
   { id: 'ov-4', kind: 'process', label: '検査', plcStep: 3 },
   { id: 'ov-d', kind: 'decision', label: '検査結果\nOK？', plcStep: 4 },
-  { id: 'ov-5', kind: 'process', label: '刃物交換', plcStep: 5 },
-  { id: 'ov-6', kind: 'process', label: '刃物ストックへ\n返却', plcStep: 6 },
-  { id: 'ov-7', kind: 'process', label: '動作準備', plcStep: 7 },
+  { id: 'ov-5', kind: 'process', label: '刃物交換', plcStep: 7 },
+  { id: 'ov-6', kind: 'process', label: '刃物ストックへ\n返却', plcStep: 8 },
+  { id: 'ov-7', kind: 'process', label: '動作準備', plcStep: 9 },
 ]
 const OVERALL_DECISION_STEP = OVERALL_FLOW.find((n) => n.id === 'ov-d')!.plcStep!
 

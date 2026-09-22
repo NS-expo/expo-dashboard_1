@@ -144,7 +144,6 @@
    関節位置とズレることがあったが、画像に対する絶対位置指定に変更した。 */
 .robot-diagram__joint-warning {
   position: absolute;
-  left: 50%;
   width: 14px;
   height: 14px;
   border-radius: 50%;
@@ -152,6 +151,38 @@
   box-shadow: 0 0 12px 4px rgba(255, 77, 79, 0.75);
   transform: translate(-50%, -50%);
   animation: axis-row-warning-flicker 1s ease-in-out infinite;
+}
+
+/* ===== キャリブレーション用デバッグ表示（RobotAxisDiagram.tsxのDEBUG_SHOW_JOINTS） =====
+   IMAGE_JOINT_X/Yが実際に指している位置を、軸名付きの点で見えるようにする。
+   調整が終わったらDEBUG_SHOW_JOINTSをfalseに戻せば非表示になる。 */
+.robot-diagram__debug-joint {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  z-index: 2;
+}
+
+.robot-diagram__debug-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #39ff6a;
+  box-shadow: 0 0 6px 2px rgba(57, 255, 106, 0.85);
+  border: 1px solid #ffffff;
+}
+
+.robot-diagram__debug-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: #39ff6a;
+  background: rgba(0, 0, 0, 0.65);
+  padding: 0 3px;
+  border-radius: 3px;
+  white-space: nowrap;
 }
 
 /* ===== 上部タイトルバー ===== */
