@@ -277,84 +277,104 @@ function ControlPreview({ theme }: { theme: Theme }) {
 }
 
 function AlertPreview({ theme }: { theme: Theme }) {
-  // 実ページ（軸モニタ ー RB1/RB2比較）のミニ版：
-  // RB1/RB2稼働率ドーナツ＋軸ごとに中央から左右へ伸びるトルクバー、で構成する。
-  // 高さは全て固定pxにし、NAMEPLATEプレビューで起きた「自然サイズが
-  // 揺れてPreviewThumbのスケールが安定しない」問題を再発させないようにしている。
+  // 実ページ（軸モニター RB1/RB2比較）のミニ版：
+  // 上部にRB1/RB2バッジ、中央に簡易ロボットアイコン、
+  // 軸ごとにTORQUE/SPEEDの2段バーを左右対称に配置する。
+  //
+  // ※これまで「flex:1の中に%幅の子」という間接参照でバーが表示されない問題が
+  // 解消しなかったため、その依存関係自体を排除。バーの土台幅・塗り幅ともに
+  // 固定pxで直接計算し、flexの解決タイミングに依存しない構造にしている。
   const RB1_COLOR = '#3fa9f5'
   const RB2_COLOR = '#f2a33f'
-  const rb1Util = 92
-  const rb2Util = 88
+  const BAR_TRACK_W = 74 // 片側バー土台の幅(px)。左右2つ+中央16px+gapで204px枠に収まる値
 
   const axes = [
-    { label: '軸1', rb1: 55, rb2: 53 },
-    { label: '軸2', rb1: 50, rb2: 48 },
-    { label: '軸3', rb1: 57, rb2: 55 },
+    { label: 'T軸', rb1t: 62, rb1s: 40, rb2t: 58, rb2s: 45 },
+    { label: null,  rb1t: 48, rb1s: 55, rb2t: 52, rb2s: 38 }, // U軸：ラベルなし
+    { label: 'S軸', rb1t: 70, rb1s: 30, rb2t: 65, rb2s: 42 },
   ]
 
-  function Donut({ pct, color }: { pct: number; color: string }) {
-    const r = 12
-    const c = 2 * Math.PI * r
-    const offset = c - (pct / 100) * c
+  function Bar({ pct, color, align }: { pct: number; color: string; align: 'left' | 'right' }) {
+    const fillW = Math.round((pct / 100) * BAR_TRACK_W)
     return (
-      <svg width="26" height="26" viewBox="0 0 32 32">
-        <circle cx="16" cy="16" r={r} fill="none" stroke={theme.border} strokeWidth="4" />
-        <circle
-          cx="16" cy="16" r={r} fill="none" stroke={color} strokeWidth="4"
-          strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round"
-          transform="rotate(-90 16 16)"
-        />
+      <div style={{
+        width: `${BAR_TRACK_W}px`, height: '3px',
+        background: theme.border, borderRadius: '1px',
+        position: 'relative', overflow: 'hidden', flexShrink: 0,
+      }}>
+        <div style={{
+          position: 'absolute',
+          top: 0, bottom: 0,
+          [align === 'left' ? 'right' : 'left']: 0,
+          width: `${fillW}px`,
+          background: color,
+        }} />
+      </div>
+    )
+  }
+
+  function RobotIcon({ color }: { color: string }) {
+    return (
+      <svg width="14" height="22" viewBox="0 0 14 22" fill="none">
+        <path d="M7 20 V13 L11 8 V3" stroke={color} strokeWidth="1.4" strokeLinecap="round" />
+        <circle cx="7" cy="20" r="1.6" fill={color} />
+        <circle cx="7" cy="13" r="1.3" fill={color} />
+        <circle cx="11" cy="8" r="1.3" fill={color} />
+        <circle cx="11" cy="3" r="1.3" fill={color} />
       </svg>
     )
   }
 
   return (
-    <div style={{ padding: '8px' }}>
+    <div style={{ padding: '8px', width: '204px', boxSizing: 'border-box' }}>
       <div style={{
         background: theme.bg, border: `1px solid ${theme.border}`,
-        borderRadius: '6px', padding: '6px', display: 'flex',
-        flexDirection: 'column', gap: '5px',
+        borderRadius: '6px', padding: '6px 7px', display: 'flex',
+        flexDirection: 'column', gap: '5px', width: '100%', boxSizing: 'border-box',
       }}>
-        {/* タイトル */}
-        <div style={{ fontSize: '7px', color: theme.subtext, textAlign: 'center' }}>
-          軸モニタ ー RB1/RB2比較
+        {/* タイトル + RB1/RB2バッジ */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <span style={{
+            fontSize: '6px', fontWeight: 800, color: RB1_COLOR,
+            border: `1px solid ${RB1_COLOR}`, borderRadius: '3px', padding: '1px 4px',
+          }}>
+            RB1
+          </span>
+          <span style={{ fontSize: '6px', color: theme.subtext, letterSpacing: '0.3px' }}>
+            ROBOT MONITOR
+          </span>
+          <span style={{
+            fontSize: '6px', fontWeight: 800, color: RB2_COLOR,
+            border: `1px solid ${RB2_COLOR}`, borderRadius: '3px', padding: '1px 4px',
+          }}>
+            RB2
+          </span>
         </div>
 
-        {/* RB1/RB2 稼働率ドーナツ */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-            <Donut pct={rb1Util} color={RB1_COLOR} />
-            <span style={{ fontSize: '6px', fontWeight: 700, color: RB1_COLOR, whiteSpace: 'nowrap' }}>
-              RB1 {rb1Util}%
-            </span>
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '2px' }}>
-            <Donut pct={rb2Util} color={RB2_COLOR} />
-            <span style={{ fontSize: '6px', fontWeight: 700, color: RB2_COLOR, whiteSpace: 'nowrap' }}>
-              RB2 {rb2Util}%
-            </span>
-          </div>
-        </div>
-
-        {/* 軸ごとのトルクバー（中央の軸ラベルから左＝RB1／右＝RB2へ伸びる） */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px' }}>
+        {/* 軸ごとの行：左=RB1 (TORQUE/SPEED) / 中央=ロボットアイコン+ラベル / 右=RB2 */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           {axes.map((a, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '3px', height: '9px' }}>
-              <div style={{ flex: 1, height: '6px', display: 'flex', justifyContent: 'flex-end' }}>
-                <div style={{
-                  width: `${a.rb1}%`, background: RB1_COLOR, borderRadius: '2px 0 0 2px', height: '100%',
-                }} />
+            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '4px', height: '11px' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
+                <Bar pct={a.rb1t} color={RB1_COLOR} align="left" />
+                <Bar pct={a.rb1s} color={RB1_COLOR} align="left" />
               </div>
-              <span style={{
-                fontSize: '5px', color: theme.subtext, width: '13px',
-                textAlign: 'center', flexShrink: 0, whiteSpace: 'nowrap',
+
+              <div style={{
+                display: 'flex', flexDirection: 'column', alignItems: 'center',
+                width: '16px', flexShrink: 0, gap: '1px',
               }}>
-                {a.label}
-              </span>
-              <div style={{ flex: 1, height: '6px' }}>
-                <div style={{
-                  width: `${a.rb2}%`, background: RB2_COLOR, borderRadius: '0 2px 2px 0', height: '100%',
-                }} />
+                {i === 1 && <RobotIcon color={theme.subtext} />}
+                {a.label && (
+                  <span style={{ fontSize: '5px', color: theme.subtext, whiteSpace: 'nowrap' }}>
+                    {a.label}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flexShrink: 0 }}>
+                <Bar pct={a.rb2t} color={RB2_COLOR} align="right" />
+                <Bar pct={a.rb2s} color={RB2_COLOR} align="right" />
               </div>
             </div>
           ))}

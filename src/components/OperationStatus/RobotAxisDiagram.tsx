@@ -44,21 +44,21 @@ export const AXIS_ROW_FLEX: Record<AxisName, number> = {
  * 大きく曲がっているため、X座標も持たないと接続線が関節からズレる（＝今回の不具合）。
  * あくまで目視での概算値のため、実際の画像を見ながら微調整すること。 */
 export const IMAGE_JOINT_X: Record<AxisName, number> = {
-  T: 0.41,
-  B: 0.41,
+  T: 0.25,
+  B: 0.32,
   R: 0.50,
-  U: 0.62,
-  L: 0.46,
+  U: 0.68,
+  L: 0.55,
   S: 0.52,
 }
 
 export const IMAGE_JOINT_Y: Record<AxisName, number> = {
-  T: 0.26,
-  B: 0.33,
-  R: 0.40,
-  U: 0.46,
-  L: 0.67,
-  S: 0.83,
+  T: 0.13,
+  B: 0.19,
+  R: 0.30,
+  U: 0.45,
+  L: 0.79,
+  S: 0.86,
 }
 
 // 関節中心のY座標（0〜100）。AXIS_ROW_FLEXの累積区間の中間点として算出する

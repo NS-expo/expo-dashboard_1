@@ -48,8 +48,8 @@ const sampleQuestions: NameplateQuestion[] = [
     correctIndex: 0,
     explanation: '運転開始の合図で周りに運転することを知らせます。',
     videoUrl: {
-      light: 'run buzzer.mp4',
-      dark: 'run buzzer.mp4'
+      light: 'run buzzer.png',
+      dark: 'run buzzer.png'
     },
     iconUrl: {
       light: 'buzzer_light.png',
@@ -63,8 +63,8 @@ const sampleQuestions: NameplateQuestion[] = [
     correctIndex: 0,
     explanation: '減速しながら機械を停止させます。',
     videoUrl: {
-      light: '停止.mp4',
-      dark: '停止.mp4'
+      light: '停止.png',
+      dark: '停止.png'
     },
     iconUrl: {
       light: 'stop_light.png',
@@ -78,8 +78,8 @@ const sampleQuestions: NameplateQuestion[] = [
     correctIndex: 0,
     explanation: '異常状態をリセットします。',
     videoUrl: {
-      light: 'エラーリセット.mp4',
-      dark: 'エラーリセット.mp4'
+      light: 'エラーリセット.png',
+      dark: 'エラーリセット.png'
     },
     iconUrl: {
       light: 'error reset_light.png',
@@ -93,8 +93,8 @@ const sampleQuestions: NameplateQuestion[] = [
     correctIndex: 0,
     explanation: 'カウントされていた値を0にリセットします。',
     videoUrl: {
-      light: 'カウンタリセット.mp4',
-      dark: 'カウンタリセット.mp4'
+      light: 'カウンタリセット.png',
+      dark: 'カウンタリセット.png'
     },
     iconUrl: {
       light: 'counter reset_light.png',

@@ -20,5 +20,17 @@ export const RB_FLOW_ADDRESSES = [RB1_FLOW_STEP_ADDRESS, RB2_FLOW_STEP_ADDRESS]
  * フロー内容が未確定のため、現時点では空。内容が決まり次第ここに追記してください。
  * 例: { 1: '刃物取付', 2: '刃物取外', ... }
  */
-export const RB1_FLOW_STEP_LABELS: Record<number, string> = {}
-export const RB2_FLOW_STEP_LABELS: Record<number, string> = {}
+export const RB1_FLOW_STEP_LABELS: Record<number, string> = {
+    1:'勘合',
+    2:'位置決め',
+    3:'検査',
+    4:'リングスプリング取付',
+    5:'蓋取付',
+    6:'リングスプリング取外',
+}
+export const RB2_FLOW_STEP_LABELS: Record<number, string> = {
+    1:'ねじ締め',
+    2:'ねじ緩め',
+    3:'蓋取り外し',
+    4:'上刃交換',
+}

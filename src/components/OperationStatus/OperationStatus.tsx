@@ -281,6 +281,7 @@ export default function OperationStatus({
                 />
                 <AverageSpeedGauge
                   value={rb1AvgTorque}
+                  maxValue={80}
                   color={rb1Color}
                   label="平均トルク"
                   reverse
@@ -289,7 +290,7 @@ export default function OperationStatus({
               </div>
 
               <div className="axis-monitor__header-rb2">
-                <AverageSpeedGauge value={rb2AvgTorque} color={rb2Color} label="平均トルク" />
+                <AverageSpeedGauge value={rb2AvgTorque} maxValue={80} color={rb2Color} label="平均トルク" />
                 <RobotHeaderBadge
                   label="RB2"
                   colorKey="RB2"

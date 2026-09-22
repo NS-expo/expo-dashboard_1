@@ -310,17 +310,14 @@ useEffect(() => {
             // 問題表示：動画（背景）＋問題文＋選択肢（クリック可）。タイマーなし。
             <div className="nameplate-quiz__question-view">
               {currentVideoUrl && (
-             <video
+             <img
                key={currentVideoUrl}
                src={currentVideoUrl}
+               alt=""
                className="nameplate-quiz__video"
-               autoPlay
-               muted
-               loop
-               playsInline
-               preload="auto"
-               onCanPlay={() => setVideoReady(true)}
                style={{ opacity: videoReady ? 1 : 0 }}
+               onLoad={() => setVideoReady(true)}
+              
               />
               )}
               {currentVideoUrl && !videoReady && (

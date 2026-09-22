@@ -441,7 +441,7 @@
 }
 
 .admin-panel__modal--embedded .admin-panel__chart-value-label {
-  font-size: clamp(16px, 2.4vw, 44px);
+  font-size: clamp(13px, 1.8vw, 32px);
 }
 
 .admin-panel__modal--embedded .admin-panel__chart-value-label--long {

@@ -12,8 +12,10 @@
 import type { CSSProperties } from 'react'
 
 interface Props {
-  /** 6軸平均値（0〜100%） */
+  /** 6軸平均値（実値%） */
   value: number
+  /** ゲージを100%として扱う実値。省略時は100。 */
+  maxValue?: number
   /** ゲージの発光色・充填色（rb1Color / rb2Color） */
   color: string
   /** ゲージ内のラベル文言（例：'RB1 平均速度'） */
@@ -28,8 +30,8 @@ function clampPct(v: number) {
   return Math.min(100, Math.max(0, v))
 }
 
-export default function AverageSpeedGauge({ value, color, label, reverse = false, iconOnRight = false }: Props) {
-  const pct = clampPct(value)
+export default function AverageSpeedGauge({ value, maxValue = 100, color, label, reverse = false, iconOnRight = false }: Props) {
+  const pct = clampPct((value / maxValue) * 100)
 
   const fillStyle: CSSProperties = {
     width: `${pct}%`,

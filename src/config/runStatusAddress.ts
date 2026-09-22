@@ -13,7 +13,7 @@
 import type { CameraStatus } from '../components/RobotArmDashboard/RobotArmDashboard'// ← 実際のパスに合わせて調整してください
 
 /** 稼働状況（D15018） */
-export const RUN_STATUS_ADDRESS = 15018
+export const RUN_STATUS_ADDRESS = 15134
 
 /** usePlcWebSocket の selectedAddresses にまとめて渡すための一覧 */
 export const RUN_STATUS_ADDRESSES = [RUN_STATUS_ADDRESS]

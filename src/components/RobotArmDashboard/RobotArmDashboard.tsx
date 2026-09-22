@@ -35,7 +35,7 @@ const MIN_CAMERAS = 1
 const MAX_CAMERAS = 8
 
 // メイン画面で正常時にカメラを自動切替する間隔
-const ROTATE_INTERVAL_MS = 6000
+const ROTATE_INTERVAL_MS = 10000
 
 // カメラの状態は正常 / 異常の2値で管理する
 // 変更後

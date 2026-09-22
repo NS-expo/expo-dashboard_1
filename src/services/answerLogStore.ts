@@ -10,86 +10,134 @@
 // getAnswerLogStore() の中身をそちらに差し替えるだけでよい。
 // useQuizAnswerLog より上のコード（コンポーネント側）は一切変更不要。
 
-import type { QuizAnswerLog } from '../types'
+import type { QuizAnswerLog } from '../types' 
 
-export interface AnswerLogStore {
-  /** 1件の回答ログを追加保存する */
-  append(log: QuizAnswerLog): Promise<void>
-  /** 保存されている全ログを取得する */
-  getAll(): Promise<QuizAnswerLog[]>
-  /** 全ログを消去する（デバッグ・管理用） */
-  clear(): Promise<void>
-}
+ 
 
-const STORAGE_KEY = 'nameplateQuiz.answerLog.v1'
+export interface AnswerLogStore { 
 
-function readLocal(): QuizAnswerLog[] {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    return Array.isArray(parsed) ? parsed : []
-  } catch {
-    return []
-  }
-}
+  append(log: QuizAnswerLog): Promise<void> 
 
-function writeLocal(logs: QuizAnswerLog[]) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(logs))
-  } catch {
-    // ストレージ容量超過等は無視（集計機能が使えなくなるだけで致命的ではない）
-  }
-}
+  getAll(): Promise<QuizAnswerLog[]> 
 
-/**
- * 現状の実装：端末内の localStorage に保存する。
- * スマホで回答してもモニタ（別端末）には反映されない、という今の制約は
- * この実装そのものが原因。DB版に差し替えるまでの暫定実装。
- */
-export const localAnswerLogStore: AnswerLogStore = {
-  async append(log) {
-    const logs = readLocal()
-    logs.push(log)
-    writeLocal(logs)
-  },
-  async getAll() {
-    return readLocal()
-  },
-  async clear() {
-    try {
-      localStorage.removeItem(STORAGE_KEY)
-    } catch {
-      // noop
-    }
-  },
-}
+  clear(): Promise<void> 
 
-/**
- * DB接続版のサンプル（未使用・コメントのみ）。
- * バックエンドAPIができたら、こういう実装を作って
- * 下の getAnswerLogStore() の戻り値をこちらに差し替えるだけで良い。
- *
- * export const apiAnswerLogStore: AnswerLogStore = {
- *   async append(log) {
- *     await fetch('/api/quiz-answers', {
- *       method: 'POST',
- *       headers: { 'Content-Type': 'application/json' },
- *       body: JSON.stringify(log),
- *     })
- *   },
- *   async getAll() {
- *     const res = await fetch('/api/quiz-answers')
- *     if (!res.ok) return []
- *     return res.json()
- *   },
- *   async clear() {
- *     await fetch('/api/quiz-answers', { method: 'DELETE' })
- *   },
- * }
- */
+} 
 
-// ここを差し替えるだけで、アプリ全体の保存先をDBに切り替えられる。
-export function getAnswerLogStore(): AnswerLogStore {
-  return localAnswerLogStore
-}
+ 
+
+const SESSION_KEY = 'nameplateQuiz.sessionId.v1' 
+
+ 
+
+function quizApiBase(): string { 
+
+  const base = import.meta.env.VITE_QUIZ_API_BASE as string | undefined 
+
+  if (!base?.trim()) { 
+
+    throw new Error('VITE_QUIZ_API_BASE が未設定です') 
+
+  } 
+
+  return base.replace(/\/$/, '') 
+
+} 
+
+ 
+
+function readSessionId(): string | undefined { 
+
+  try { 
+
+    return sessionStorage.getItem(SESSION_KEY) || undefined 
+
+  } catch { 
+
+    return undefined 
+
+  } 
+
+} 
+
+ 
+
+function writeSessionId(id: string) { 
+
+  try { 
+
+    sessionStorage.setItem(SESSION_KEY, id) 
+
+  } catch { 
+
+    // noop 
+
+  } 
+
+} 
+
+ 
+
+export const apiAnswerLogStore: AnswerLogStore = { 
+
+  async append(log) { 
+
+    const res = await fetch(`${quizApiBase()}/quiz/answers`, { 
+
+      method: 'POST', 
+
+      headers: { 'Content-Type': 'application/json' }, 
+
+      body: JSON.stringify({ 
+
+        sessionId: readSessionId(), 
+
+        questionId: log.questionId, 
+
+        choiceIndex: log.choiceIndex, 
+
+        correct: log.correct, 
+
+        timestamp: log.timestamp, 
+
+      }), 
+
+    }) 
+
+    if (!res.ok) throw new Error(`quiz append failed: ${res.status}`) 
+
+    const data = (await res.json()) as { sessionId?: string } 
+
+    if (data.sessionId) writeSessionId(data.sessionId) 
+
+  }, 
+
+ 
+
+  async getAll() { 
+
+    const res = await fetch(`${quizApiBase()}/quiz/answers`) 
+
+    if (!res.ok) return [] 
+
+    return res.json() 
+
+  }, 
+
+ 
+
+  async clear() { 
+
+    await fetch(`${quizApiBase()}/quiz/answers`, { method: 'DELETE' }) 
+
+  }, 
+
+} 
+
+ 
+
+export function getAnswerLogStore(): AnswerLogStore { 
+
+  return apiAnswerLogStore 
+
+} 
