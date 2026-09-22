@@ -384,6 +384,30 @@ function findCurrentStep(
   return { label: current.label.replace(/\n/g, ' ') }
 }
 
+export interface OverallFlowStatus {
+  currentLabel?: string
+  current: number
+  total: number
+}
+
+/** WORKFLOWと同じ全体工程情報を、他の表示（STATUSのRB1カードなど）でも使う。 */
+export function getOverallFlowStatus(
+  activeStep: number | undefined,
+  ngSignal?: boolean,
+): OverallFlowStatus {
+  const { nodes, resolved, progress } = resolveOverallFlow(activeStep, ngSignal)
+  const resolvedChip = resolved
+    ? { nodeId: 'ov-d', label: ngSignal ? 'NG' : 'OK', color: ngSignal ? NG_COLOR : OK_COLOR }
+    : undefined
+  const current = findCurrentStep(nodes, activeStep, resolvedChip)
+
+  return {
+    currentLabel: current?.label,
+    current: progress.current,
+    total: progress.total,
+  }
+}
+
 /** モバイル専用：フロー図（横スクロール）の代わりに現在工程だけをシンプルに表示する */
 function CurrentStepView({
   theme,

@@ -10,7 +10,8 @@
 // STATUS画面仕様変更（9. モバイル版簡略表示／10. モバイル版RB切替機能）対応：
 // ・ヘッダーを2段構成にし、「RB1」「RB2」のロボット名は列見出しに1回だけ表示、
 //   以降は色（rb1Color/rb2Color）で識別する（横スクロール発生時の繰り返し表示を削減）。
-// ・セル内表示は「現在値 / Peak値」形式に統一し、「ピーク」の文字表記は廃止した。
+// ・セル内表示は「現在値%（Peak値%）」形式に統一し、「ピーク」の文字表記は廃止した
+//   （モニタ版AxisMetricCardの表記と統一。旧「値% / Peak値%」形式から変更）。
 // ・警告（しきい値80%到達〜70%以下で3秒維持して解除）はOperationStatus側の
 //   warningAxes（モニタ版のaxis-row--warningと共通のヒステリシス付き判定）を
 //   そのまま受け取る。仕様の最終イメージ「色は変化せずフリッカのみ」に合わせ、
@@ -81,7 +82,7 @@ export default function AxisTable({
         </thead>
         <tbody>
           {rows.map((row) => {
-            // 現在値/Peak値表記の「/」はモニタ版（TorqueBar）の表記と統一している
+            // 現在値・Peak値の表記「値%（Peak値%）」はモニタ版（AxisMetricCard）と統一している
             const isWarning = warningAxes[row.axis - 1] ?? false
             
             return (
@@ -96,9 +97,9 @@ export default function AxisTable({
                   className={isWarning ? 'axis-table__cell--warning' : undefined}
                   style={{ color: rb1Color, borderColor: theme.border, opacity: rb1Dim ? DIM_OPACITY : 1 }}
                 >
-                  {row.rb1.torqueValue}% /{' '}
-                   <span className="axis-table__peak-value">
-                    {row.rb1.torquePeak}%
+                  {row.rb1.torqueValue}%{' '}
+                  <span className="axis-table__peak-value">
+                    ({row.rb1.torquePeak}%)
                   </span>
                 </td>
                 <td style={{ color: rb2Color, borderColor: theme.border, opacity: rb2Dim ? DIM_OPACITY : 1 }}>
@@ -108,9 +109,9 @@ export default function AxisTable({
                   className={isWarning ? 'axis-table__cell--warning' : undefined}
                   style={{ color: rb2Color, borderColor: theme.border, opacity: rb2Dim ? DIM_OPACITY : 1 }}
                 >
-                  {row.rb2.torqueValue}% /{' '}
-                   <span className="axis-table__peak-value">
-                    {row.rb2.torquePeak}%
+                  {row.rb2.torqueValue}%{' '}
+                  <span className="axis-table__peak-value">
+                    ({row.rb2.torquePeak}%)
                   </span>
                 </td>
               </tr>

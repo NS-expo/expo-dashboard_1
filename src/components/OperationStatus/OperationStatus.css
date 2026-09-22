@@ -42,11 +42,50 @@
 .axis-monitor__grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 260px minmax(0, 1fr);
-  grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-rows: auto minmax(0, 1fr);
   column-gap: 14px;
   row-gap: 6px;
   flex: 1;
   min-height: 0;
+}
+
+/* 「速度」キャプション行・中央「トルク」見出しを廃止し2行構成にしたことに伴い、
+   各直下の子要素の行・列を明示指定する（中央列用の空divを挟まなくなったため、
+   自動配置だけに頼ると意図しない列にずれてしまう） */
+.axis-monitor__header-rb1 { grid-row: 1; grid-column: 1; }
+.axis-monitor__header-rb2 { grid-row: 1; grid-column: 3; }
+
+.axis-monitor__rows--rb1 { grid-row: 2; grid-column: 1; }
+.robot-diagram { grid-row: 2; grid-column: 2; }
+.axis-monitor__rows--rb2 { grid-row: 2; grid-column: 3; }
+
+/* 接続線オーバーレイは3列すべてにまたがる。DOM順で3列のカード／画像より
+   前に描画しているため、通常のスタッキング順のままカード類の下に潜り込む
+   （z-index指定は不要）。 */
+.axis-monitor__connectors {
+  grid-row: 2;
+  grid-column: 1 / -1;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.axis-monitor__connector-line {
+  /* 通常時の色はJSX側でrb1Color/rb2Colorをインライン指定する。ここではフォールバックのみ。 */
+  stroke: rgba(255, 255, 255, 0.55);
+  stroke-width: 1.4;
+  stroke-dasharray: 3 3;
+  opacity: 0.75;
+}
+
+.axis-monitor__connector-line--warning {
+  stroke: #ff4d4f;
+  animation: axis-connector-warning-flicker 1s ease-in-out infinite;
+}
+
+@keyframes axis-connector-warning-flicker {
+  0%, 100% { opacity: 0.45; }
+  50% { opacity: 1; }
 }
 
 /* 軸データ行（RB1側／RB2側）：中央寄りに必ずTorqueBarが来るよう、
@@ -79,69 +118,40 @@
   flex-direction: column;
 }
 
-.robot-diagram__svg {
+/* 模式図本体：支給のイラスト画像（ROBOT_DARK.png / ROBOT_LIGHT.png）をそのまま
+   表示する。軸名称（S/L/U/R/B/T）は画像内に焼き込み済みのため文字描画は不要。 */
+.robot-diagram__img {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
+  object-fit: contain;
   z-index: 0;
   pointer-events: none;
+  user-select: none;
 }
 
 .robot-diagram__cells {
-  position: relative;
+  position: absolute;
+  inset: 0;
   z-index: 1;
-  flex: 1;
-  min-height: 0;
-  display: flex;
-  flex-direction: column;
+  pointer-events: none;
 }
 
-.robot-diagram__cell {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  min-height: 0;
-}
-
-.robot-diagram__joint {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 46px;
-  height: 46px;
+/* 警告時のみ、画像内の実際の関節位置（IMAGE_JOINT_Y、上からの%指定）に
+   発光マーカーを表示する（通常時は画像の焼き込み済みラベルのみで足りるため
+   何も描画しない）。以前はflexセルの比率で位置決めしていたため実際の
+   関節位置とズレることがあったが、画像に対する絶対位置指定に変更した。 */
+.robot-diagram__joint-warning {
+  position: absolute;
+  left: 50%;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
-  border: 1px solid rgba(255, 255, 255, 0.25);
-  background:
-    radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.08) 32%, transparent 55%),
-    radial-gradient(circle at 65% 75%, rgba(0, 0, 0, 0.35) 0%, transparent 60%),
-    rgba(24, 30, 38, 0.92);
-  box-shadow:
-    inset 0 2px 3px rgba(255, 255, 255, 0.25),   /* 上側のハイライト */
-    inset 0 -3px 4px rgba(0, 0, 0, 0.55),        /* 下側の陰 */
-    0 3px 6px rgba(0, 0, 0, 0.45);               /* 外側の落ち影 */
-  font-size: 22px;
-  font-weight: 800;
-  letter-spacing: 0.02em;
-  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease;
-}
-
-.robot-diagram__joint--warning {
-  color: #ff4d4f !important;
-  border-color: rgba(255, 77, 79, 0.6);
-  box-shadow:
-    inset 0 2px 3px rgba(255, 255, 255, 0.25),
-    inset 0 -3px 4px rgba(0, 0, 0, 0.55),
-    0 0 10px rgba(255, 77, 79, 0.55),
-    0 3px 6px rgba(0, 0, 0, 0.45);
+  background: #ff4d4f;
+  box-shadow: 0 0 12px 4px rgba(255, 77, 79, 0.75);
+  transform: translate(-50%, -50%);
   animation: axis-row-warning-flicker 1s ease-in-out infinite;
-}
-
-.robot-diagram__joint-role {
-  font-size: 20px;
-  white-space: nowrap;
 }
 
 /* ===== 上部タイトルバー ===== */
@@ -255,13 +265,6 @@
   gap: 14px;
 }
 
-.axis-monitor__header-center {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-}
-
 .axis-monitor__header-rb2 {
   display: flex;
   align-items: center;
@@ -355,37 +358,6 @@
 .robot-header-badge--stacked .robot-header-badge__caption {
   font-size: 20px;
   white-space: nowrap;
-}
-
-/* 中央「トルク」見出しバッジ：RB1/RB2ラベル箱・平均速度ゲージと高さを揃えつつ、
-   トルクバー群（中央のロボット模式図列）の見出しとして機能する */
-.axis-monitor__torque-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 22px;
-  border: 2px solid color-mix(in srgb, currentColor 33%, transparent);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
-  font-size: 25px;
-  font-weight: 700;
-  white-space: nowrap;
-}
-
-.axis-monitor__torque-badge-icon {
-  flex: 0 0 auto;
-  filter: drop-shadow(0 0 3px currentColor);
-}
-
-.axis-monitor__header-center-title {
-  font-size: 20px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.axis-monitor__header-center-caption {
-  font-size: 20px;
-  color: var(--text-secondary, #9aa4b2);
 }
 
 /* ===== 稼働率ドーナツ（RB1/RB2） ===== */
@@ -545,7 +517,100 @@
   50% { background: rgba(255, 77, 79, 0.14); }
 }
 
-/* ===== トルクバー（ピラミッド型・片側分） ===== */
+/* =====================================================================
+   軸1本分カード（トルク＋速度をまとめた1枚のガラス調カード）
+   旧仕様（SpeedBar＋TorqueBarを横に2本並べる構成）を統合し、1軸＝1カードに
+   変更した。カード内はトルク行／速度行の2段構成で、各行の先頭にアイコン＋
+   英語名称（TORQUE／SPEED）を表示する（旧axis-monitor__speed-caption・
+   axis-monitor__torque-badgeの重複表示を廃止したのに伴う変更）。
+   ピーク値は「値% / ピーク%」から「値%（ピーク%）」表記に変更した。
+   ===================================================================== */
+
+.axis-metric-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  min-height: 0;
+  padding: 8px 16px;
+  border-radius: 14px;
+  border-width: 1px;
+  border-style: solid;
+  box-sizing: border-box;
+  /* すりガラス風：AverageSpeedGaugeと質感を統一 */
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    inset 0 -6px 10px rgba(0, 0, 0, 0.2);
+}
+
+.axis-metric-card--warning {
+  border-color: rgba(255, 77, 79, 0.65) !important;
+  animation: axis-row-warning-flicker 1s ease-in-out infinite;
+}
+
+.axis-metric-card__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.axis-metric-card__tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 0 auto;
+  width: 84px;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.axis-metric-card__tag svg {
+  flex: 0 0 auto;
+  filter: drop-shadow(0 0 3px currentColor);
+}
+
+.axis-metric-card__track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 16px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  overflow: hidden;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.axis-metric-card__fill {
+  height: 100%;
+  border-radius: 999px;
+  filter: brightness(1.1) saturate(1.05);
+  transition: width 0.3s ease;
+}
+
+.axis-metric-card__value {
+  flex: 0 0 auto;
+  min-width: 5.5ch;
+  text-align: right;
+  font-size: 22px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.axis-metric-card__peak {
+  font-size: 15px;
+  font-weight: 400;
+}
+
+/* ===== トルクバー（旧・ピラミッド型・片側分。互換のため残置、現在未使用） ===== */
 
 .torque-bar {
   position: relative;
@@ -630,7 +695,7 @@
 }
 
 /* ===== 速度ゲージ（アイコン＋ガラス調バー。左右外側） ===== */
-/* 「速度」の文字は各行で繰り返さず、axis-monitor__speed-caption-row側で1か所だけ表示する。
+/* 旧・ピラミッド型速度ゲージ（互換のため残置、現在はAxisMetricCardに統合され未使用）。
    数値はゲージ内を追従するバブルではなく、軸ラベル側（中央寄り）に固定表示する
    （RB1側はゲージの右、RB2側はゲージの左＝どちらも中央寄り）。 */
 
@@ -717,27 +782,6 @@
 
 .speed-bar--right .speed-bar__value {
   text-align: left;
-}
-
-/* ===== 「速度」キャプション（1か所だけ表示） =====
-   axis-monitor__grid（3列グリッド）の2行目にそのまま並ぶ直接の子要素
-   （RB1キャプション／中央スペーサー／RB2キャプション）になったため、
-   個別のgrid-column指定は不要（1〜3列目に自動配置される）。 */
-
-.axis-monitor__speed-caption {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  justify-self: center;
-  padding: 6px 16px;
-  border: 2px solid color-mix(in srgb, currentColor 33%, transparent);
-  border-radius: 8px;
-  background: rgba(255, 255, 255, 0.03);
-  font-size: 25px;
-  font-weight: 700;
-  text-align: center;
-  letter-spacing: 0.05em;
-  color: var(--text-secondary, #9aa4b2);
 }
 
 /* ===== 速度リング（旧仕様・未使用だが互換のため残置） ===== */
@@ -1077,12 +1121,13 @@
     column-gap: 6px;
   }
 
-  .axis-monitor__header-rb1 { justify-content: flex-start; }
-  .axis-monitor__header-rb2 { justify-content: flex-end; }
+  .axis-monitor__header-rb1 { grid-column: 1; justify-content: flex-start; }
+  .axis-monitor__header-rb2 { grid-column: 2; justify-content: flex-end; }
+  .axis-monitor__rows--rb1 { grid-column: 1; }
+  .axis-monitor__rows--rb2 { grid-column: 2; }
 
-  .axis-monitor__header-center,
-  .axis-monitor__row2-spacer,
-  .robot-diagram {
+  .robot-diagram,
+  .axis-monitor__connectors {
     display: none;
   }
 
@@ -1134,13 +1179,6 @@
 }
 
 /* ===== モバイル対応：グラフ／ゲージ→表に切替、縦スクロール許可 ===== */
-
-@media (max-width: 768px) {
-  .axis-monitor__speed-caption {
-    display: none;
-  }
-
-}
 
 @media (max-width: 640px) {
 

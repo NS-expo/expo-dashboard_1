@@ -22,14 +22,14 @@ interface AdminResultsPanelProps {
   embedded?: boolean
 }
 
-const CATEGORY_TABS = ['全体', '運転起動', '停止', 'エラーリセット', 'カウンタリセット'] as const
+const CATEGORY_TABS = ['全体', '運転合図', '停止', 'エラーリセット', 'カウンタリセット'] as const
 type CategoryTab = (typeof CATEGORY_TABS)[number]
 
 // モニタ表示のグラフで使う色。テーマの accent とは別に、5カテゴリを見分けやすい
 // 固定パレットにしている（配色自体を変えたい場合はここだけ調整すればよい）。
 const CATEGORY_COLORS: Record<CategoryTab, string> = {
   '全体': '#cbd5e1',
-  '運転起動': '#fb923c',
+  '運転合図': '#fb923c',
   '停止': '#f87171',
   'エラーリセット': '#fde047',
   'カウンタリセット': '#4ade80',

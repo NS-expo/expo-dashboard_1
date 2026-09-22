@@ -156,45 +156,52 @@ function ControlPreview({ theme }: { theme: Theme }) {
   // 実ページ（ROBOT PERFORMANCE）のミニ版：
   // 上部の指標バッジ／全体フロー図／OK・NGドーナツ＋ロボットモニタ棒グラフ、で構成する。
   // 高さは全て固定pxにし、NAMEPLATEプレビューで起きたスケール不安定化を再発させない。
-  const badges = [
-    { label: '検査回数', value: 150 },
-    { label: '異常回数', value: 4 },
-    { label: '上刃挿入', value: 118 },
+  // 実ページの色分け（METRIC_DEFS）に合わせてバッジにも枠色を付ける
+  const badges: { label: string; value: string | number; color: string }[] = [
+    { label: '稼働時間', value: '8.2h', color: theme.border },
+    { label: '異常回数', value: 4, color: '#e0503f' },
+    { label: '取付実行', value: 118, color: '#4fbf8f' },
+    { label: '取出実行', value: 115, color: '#8a7fc9' },
   ]
 
-  const flow = ['刃物取付', 'インターバル', '刃物取外', '検査']
+  // 全体フロー（JobFlowDiagram.tsx の OVERALL_FLOW）と同じ工程順に合わせる：
+  // 刃物取付→刃物取外→検査→検査結果OK？→刃物交換→刃物ストックへ返却→動作準備
+  const flow = ['刃物取付', '刃物取外', '検査', '判定', '刃物交換', '返却', '準備']
 
   const okPct = 97
   const radius = 12
   const c = 2 * Math.PI * radius
   const offset = c - (okPct / 100) * c
 
+  // METRIC_DEFS（OperationResults.tsx）と同じ4指標・同じ色に統一（検査回数は棒グラフ対象外のため削除）
   const monitorBars = [
-    { color: '#3fa9f5', h: 100 }, // 検査回数
-    { color: '#ef5a5a', h: 3 },   // 異常回数
-    { color: '#f2b544', h: 79 },  // 上刃挿入回数
+    { color: '#e0503f', h: 3 },   // 異常回数
+    { color: '#e0b04f', h: 79 },  // 上刃挿入回数
     { color: '#4fbf8f', h: 100 }, // 取付実行回数
-    { color: '#b48be0', h: 97 },  // 取出実行回数
+    { color: '#8a7fc9', h: 97 },  // 取出実行回数
   ]
 
   return (
     <div style={{ padding: '8px' }}>
+      {/* op-results__top-grid（左210px＝KPI／中央＝フロー＋グラフ／右260px＝OK-NG）と同じ3カラム配分 */}
       <div style={{
         background: '#141a2b',
         border: `1px solid ${theme.border}`,
         borderRadius: '6px',
         padding: '6px',
         display: 'flex',
-        flexDirection: 'column',
         gap: '4px',
       }}>
-        {/* 指標バッジ */}
-        <div style={{ display: 'flex', gap: '3px' }}>
+        {/* 左：KPIバッジ（縦積み・全高） */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', flex: '0 0 27%', minWidth: 0 }}>
           {badges.map((b, i) => (
             <div key={i} style={{
               flex: 1, minWidth: 0,
-              border: `1px solid ${theme.border}`, borderRadius: '3px',
+              borderLeft: `2px solid ${b.color}`,
+              background: 'rgba(255,255,255,0.03)',
+              borderRadius: '2px',
               padding: '2px 3px',
+              display: 'flex', flexDirection: 'column', justifyContent: 'center',
             }}>
               <div style={{
                 fontSize: '4px', color: theme.subtext,
@@ -209,39 +216,37 @@ function ControlPreview({ theme }: { theme: Theme }) {
           ))}
         </div>
 
-        {/* 全体フロー */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1px', height: '12px' }}>
-          {flow.map((f, i) => (
-            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '1px', flex: 1, minWidth: 0 }}>
-              <div style={{
-                flex: 1, height: '100%',
-                border: `1px solid ${theme.accent}`, borderRadius: '2px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '4px', color: theme.accent,
-                whiteSpace: 'nowrap', overflow: 'hidden',
-              }}>
-                {f}
+        {/* 中央：全体フロー（上段）＋日別実績の棒グラフ（下段） */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', flex: 1, minWidth: 0 }}>
+          {/* 全体フロー */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '1px', height: '12px' }}>
+            {flow.map((f, i) => (
+              <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '1px', flex: 1, minWidth: 0 }}>
+                <div style={{
+                  flex: 1, height: '100%',
+                  border: `1px solid ${theme.accent}`, borderRadius: '2px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '4px', color: theme.accent,
+                  whiteSpace: 'nowrap', overflow: 'hidden',
+                }}>
+                  {f}
+                </div>
+                {i < flow.length - 1 && (
+                  <span style={{ fontSize: '5px', color: theme.subtext, flexShrink: 0, lineHeight: 1 }}>
+                    ›
+                  </span>
+                )}
               </div>
-              {i < flow.length - 1 && (
-                <span style={{ fontSize: '5px', color: theme.subtext, flexShrink: 0, lineHeight: 1 }}>
-                  ›
-                </span>
-              )}
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
 
-        {/* OK/NGドーナツ＋ロボットモニタ棒グラフ */}
-        <div style={{ display: 'flex', gap: '5px', alignItems: 'center', height: '26px' }}>
-          <svg width="26" height="26" viewBox="0 0 32 32" style={{ flexShrink: 0 }}>
-            <circle cx="16" cy="16" r={radius} fill="none" stroke={theme.border} strokeWidth="5" />
-            <circle
-              cx="16" cy="16" r={radius} fill="none" stroke="#3fa9f5" strokeWidth="5"
-              strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round"
-              transform="rotate(-90 16 16)"
-            />
-          </svg>
-          <div style={{ flex: 1, display: 'flex', alignItems: 'flex-end', gap: '2px', height: '20px' }}>
+          {/* 日別実績（棒グラフ） */}
+          <div style={{
+            flex: 1, minHeight: '26px',
+            border: `1px solid ${theme.border}`, borderRadius: '3px',
+            padding: '3px 4px',
+            display: 'flex', alignItems: 'flex-end', gap: '2px',
+          }}>
             {monitorBars.map((m, i) => (
               <div key={i} style={{
                 flex: 1, height: `${m.h}%`,
@@ -249,6 +254,22 @@ function ControlPreview({ theme }: { theme: Theme }) {
               }} />
             ))}
           </div>
+        </div>
+
+        {/* 右：OK/NGドーナツ（全高・中央寄せ） */}
+        <div style={{
+          flex: '0 0 22%', minWidth: 0,
+          border: `1px solid ${theme.border}`, borderRadius: '3px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}>
+          <svg width="26" height="26" viewBox="0 0 32 32" style={{ flexShrink: 0 }}>
+            <circle cx="16" cy="16" r={radius} fill="none" stroke={theme.border} strokeWidth="5" />
+            <circle
+              cx="16" cy="16" r={radius} fill="none" stroke="#4fbf8f" strokeWidth="5"
+              strokeDasharray={c} strokeDashoffset={offset} strokeLinecap="round"
+              transform="rotate(-90 16 16)"
+            />
+          </svg>
         </div>
       </div>
     </div>

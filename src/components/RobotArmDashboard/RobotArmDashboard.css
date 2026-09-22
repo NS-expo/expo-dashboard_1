@@ -85,6 +85,29 @@
   gap: 8px;
 }
 
+.robot-dashboard__overall-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 100%;
+  margin-bottom: 4px;
+  color: inherit;
+  font-size: 0.9rem;
+  line-height: 1.2;
+}
+
+.robot-dashboard__overall-flow-label {
+  font-size: 0.8rem;
+  opacity: 0.65;
+}
+
+.robot-dashboard__overall-flow strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 1.9rem;
+}
+
 .robot-dashboard__info-card {
   flex: 1 1 0;
   min-width: 0;

@@ -2,14 +2,15 @@
 import { useEffect, useMemo, useState } from 'react'
 import PanelFrame from '../common/PanelFrame'
 import type { NameplateQuestion, ThemeMode, Theme } from '../../types'
+// UNKNOWN_CHOICE_INDEX = 「わからない」（本人が選択）
+// TIMEOUT_CHOICE_INDEX = 「未回答」（10分間操作なしでタイムアウト＝離脱）
+// どちらも集計側(useQuizAnswerLog.ts)と共有する固定値
+import { UNKNOWN_CHOICE_INDEX, TIMEOUT_CHOICE_INDEX } from '../../types'
 import AdminResultsPanel from './AdminResultsPanel'
 import { useQuizAnswerLog } from '../../hooks/useQuizAnswerLog'
 import { useQuizProgressCache, INITIAL_PROGRESS } from '../../hooks/useQuizProgressCache'
 import { useIsMobile } from '../../hooks/useMediaQuery' // ← ここを既存フックのパスに変更
 import './NameplateQuiz.css'
-
-
-const UNKNOWN_CHOICE_INDEX = 4 // 「わからない」
 
 // モニタ表示（!isMobile側）でのポーリング間隔。
 // 今はlocalStorageなので実際には同一端末内でしか意味を持たないが、
@@ -101,6 +102,11 @@ export default function NameplateQuiz({
   )
 
   // ---- 回答判定（クリックのみ） ----
+  // 「わからない」は未回答扱いとし、正答率（累計・セッションどちらも／
+  // モバイル・モニタどちらの表示も）には一切反映しない。
+  // ★ここが「わからないを選んでも正答率に影響させない」の本体部分。
+  //   isUnknown の場合は setOverall / sessionAnswered / sessionCorrect の
+  //   どれも更新しない（下のif文の外に出さないよう注意）。
   const submitAnswer = (choiceIndex: number) => {
     if (!question || progress.phase !== 'question') return
     const isUnknown = choiceIndex === UNKNOWN_CHOICE_INDEX
@@ -108,19 +114,30 @@ export default function NameplateQuiz({
 
     // 保存は非同期（将来DB化されると通信が挟まる）。UIの手触りを損なわないよう、
     // 自分の画面上の集計は保存の完了を待たずに楽観的に更新する。
+    // ※ログ自体は「わからない」でも記録する（作成者ページの選択肢別内訳で
+    //   何人がわからないを選んだか見えるようにするため）。正答率の集計から
+    //   除外する処理は useQuizAnswerLog.ts 側（isAnswered）で行っている。
     logAnswer(question.id, choiceIndex, correct).catch(() => {
       // 保存に失敗しても回答自体の進行は止めない
     })
-    setOverall((prev) => ({
-      totalAnswered: prev.totalAnswered + 1,
-      totalCorrect: prev.totalCorrect + (correct ? 1 : 0),
-    }))
+
+    // 「わからない」は正答率（累計＝サイドのリング／モバイルの結果画面）の
+    // 分母に含めない。isUnknown のときはこのブロックごとスキップする。
+    if (!isUnknown) {
+      setOverall((prev) => ({
+        totalAnswered: prev.totalAnswered + 1,
+        totalCorrect: prev.totalCorrect + (correct ? 1 : 0),
+      }))
+    }
+
     setProgress((prev) => ({
       ...prev,
       phase: 'answered',
       selectedChoiceIndex: choiceIndex,
       resultFlag: isUnknown ? 'unanswered' : correct ? 'correct' : 'incorrect',
-      sessionAnswered: prev.sessionAnswered + 1,
+      // 「わからない」は正答率の分母に含めない（sessionAnsweredを増やさない）。
+      // これがモバイルの結果画面「◯問中◯問正解／正解率◯%」の分母にもなる。
+      sessionAnswered: prev.sessionAnswered + (isUnknown ? 0 : 1),
       sessionCorrect: prev.sessionCorrect + (correct ? 1 : 0),
     }))
   }
@@ -137,13 +154,14 @@ useEffect(() => {
   const remaining = TIMEOUT_MS - elapsed
 
   const handleTimeout = () => {
-    logAnswer(targetQuestionId, UNKNOWN_CHOICE_INDEX, false).catch(() => {
+    // 10分放置 ＝ 実質的な離脱・未回答。「わからない」とは別の
+    // TIMEOUT_CHOICE_INDEX(5) で記録し、作成者ページで
+    // 「わからない」と「未回答」を別々の枠で見られるようにする。
+    // ★ここも「正答率に反映させない」対象：setOverall は呼ばず、
+    //   sessionAnswered / sessionCorrect のどちらも加算しない。
+    logAnswer(targetQuestionId, TIMEOUT_CHOICE_INDEX, false).catch(() => {
       // 保存に失敗しても進行は止めない
     })
-    setOverall((prev) => ({
-      totalAnswered: prev.totalAnswered + 1,
-      totalCorrect: prev.totalCorrect, // 未回答は正解数に加算しない
-    }))
     setProgress((prev) => {
       const isLast = prev.currentIndex === prev.order.length - 1
       if (isLast) {
@@ -152,8 +170,7 @@ useEffect(() => {
           phase: 'finished',
           selectedChoiceIndex: null,
           resultFlag: null,
-          sessionAnswered: prev.sessionAnswered + 1,
-          // sessionCorrect はそのまま（加算しない）
+          // sessionAnswered / sessionCorrect とも加算しない（未回答は正答率に含めない）
         }
       }
       return {
@@ -162,8 +179,7 @@ useEffect(() => {
         currentIndex: prev.currentIndex + 1,
         selectedChoiceIndex: null,
         resultFlag: null,
-        sessionAnswered: prev.sessionAnswered + 1,
-        // sessionCorrect はそのまま（加算しない）
+        // sessionAnswered / sessionCorrect とも加算しない（未回答は正答率に含めない）
       }
     })
   }
@@ -285,6 +301,7 @@ useEffect(() => {
                   : 0}
                 %
               </p>
+              <p className="nameplate-quiz__final-rate-note">※「わからない」は含めず</p>
               <button className="nameplate-quiz__toggle-btn" onClick={handleRestart}>
                 もう一度挑戦する
               </button>

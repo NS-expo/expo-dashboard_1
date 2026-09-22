@@ -32,8 +32,27 @@ export type ThemeMode = 'light' | 'dark'
 // ── 集計ページ（作成者用）用：回答ログ ────────────────
 
 /**
+ * 「わからない」を表す固定の選択肢インデックス（本人が能動的に選んだ場合）。
+ * choices配列（0〜3）には含まれず、UI側（NameplateQuiz.tsx）で常に
+ * 5番目の選択肢として追加される。正答率の集計（useQuizAnswerLog.ts）では
+ * このインデックスのログを未回答として分母・分子から除外する。
+ * NameplateQuiz.tsx / useQuizAnswerLog.ts の両方からこの定数を import して使う。
+ */
+export const UNKNOWN_CHOICE_INDEX = 4
+
+/**
+ * 10分間操作がなく、そのままタイムアウト（＝実質的な離脱）になった場合の
+ * 選択肢インデックス。「わからない」（本人が能動的に選んだ）とは意味が
+ * 違うので、作成者ページで別々に集計できるようあえて別番号にしてある。
+ * UNKNOWN_CHOICE_INDEX・TIMEOUT_CHOICE_INDEX はどちらも「答えていない」
+ * ことに変わりはないため、正答率（correctRate）の集計では
+ * 分母・分子どちらからも除外する（useQuizAnswerLog.ts の isAnswered 参照）。
+ */
+export const TIMEOUT_CHOICE_INDEX = 5
+
+/**
  * 1回の回答ログ。選択肢は choiceIndex 0-3 = choices配列のindex、
- * 4 = 「わからない」を表す。
+ * 4 = 「わからない」（本人が選択）、5 = 未回答（タイムアウト・離脱）を表す。
  */
 export interface QuizAnswerLog {
   questionId: string
@@ -87,4 +106,3 @@ export interface NameplateQuestion {
 
 // ── テーマ・ページ共通型（旧 src/types.ts より統合） ──
 export * from './common'
-

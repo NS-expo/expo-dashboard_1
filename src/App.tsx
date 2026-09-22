@@ -41,7 +41,7 @@ const sampleQuestions: NameplateQuestion[] = [
   {
     id: '1',
     question: 'のアイコンの意味は？',
-    choices: ['運転起動', '高速運転', '低速運転', '寸動運転'],
+    choices: ['運転合図', '高速運転', '低速運転', '寸動運転'],
     correctIndex: 0,
     explanation: '運転開始の合図で周りに運転することを知らせます。',
     videoUrl: {
@@ -155,7 +155,8 @@ export default function App() {
   // --- アイドル検知（モバイル版のみ：30分間ユーザー操作が無ければPLC接続を切る） ---
   // モニタ版は展示会場で常時つけっぱなし運用のため、絶対に接続を切ってはいけない。
   // モバイル版（来場者のスマホ等での閲覧）に限り、マウス・タッチ・キー操作が無い状態が
-  // 続いたらWebSocket接続を一時停止し、操作が再開されたら自動的に再接続する。
+  // 続いたらWebSocket接続を停止する。切断後は同じページ内では復帰させず、
+  // QRコードなどからページを開き直したときだけ新しい接続を開始する。
   const [isIdle, setIsIdle] = useState(false)
   const idleTimerRef = useRef<number | undefined>(undefined)
 
@@ -167,7 +168,7 @@ export default function App() {
     }
 
     const resetIdleTimer = () => {
-      setIsIdle(false)
+      if (isIdle) return
       if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current)
       idleTimerRef.current = window.setTimeout(() => setIsIdle(true), IDLE_TIMEOUT_MS)
     }
@@ -180,7 +181,7 @@ export default function App() {
       activityEvents.forEach((evt) => window.removeEventListener(evt, resetIdleTimer))
       if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current)
     }
-  }, [isMobile])
+  }, [isMobile, isIdle])
 
   const recentDates = getRecentDates(METRIC_DAYS)
   const DATES = recentDates.map((d) => d.label) //['MM/DD', 'MM/DD', 'MM/DD']
@@ -321,17 +322,48 @@ export default function App() {
     )
   }, [sidebarOpen])
 
+  // --- モバイルで下部が切れる対策 ---
+  // 100vh はアドレスバー等を含んだ高さになり、スマホでは実際に見えている
+  // 範囲より大きくなるため下端が隠れることがある。visualViewport（対応環境）
+  // または innerHeight の実測値を --app-vh として常に反映し、index.css /
+  // このコンポーネントの高さ指定はそれを基準にする。
+  useEffect(() => {
+    const setAppHeight = () => {
+      const h = window.visualViewport?.height ?? window.innerHeight
+      document.documentElement.style.setProperty('--app-vh', `${h * 0.01}px`)
+    }
+    setAppHeight()
+    window.addEventListener('resize', setAppHeight)
+    window.addEventListener('orientationchange', setAppHeight)
+    window.visualViewport?.addEventListener('resize', setAppHeight)
+    return () => {
+      window.removeEventListener('resize', setAppHeight)
+      window.removeEventListener('orientationchange', setAppHeight)
+      window.visualViewport?.removeEventListener('resize', setAppHeight)
+    }
+  }, [])
+
   return (
     <div
       style={{
         display: 'flex',
         flexDirection: 'column',
-        minHeight: '100vh',
+        minHeight: 'calc(var(--app-vh, 1vh) * 100)',
         background: theme.bg,
         color: theme.text,
         transition: 'background-color 0.3s, color 0.3s',
       }}
     >
+      {/* スマホを横向きにしたときの操作ブロック案内（CSS側は index.css 参照） */}
+      <div className="orientation-lock">
+        <span className="orientation-lock__icon" aria-hidden="true">📱</span>
+        <p className="orientation-lock__text">
+          この画面は縦向き表示専用です。
+          <br />
+          お手数ですが端末を縦向きにしてご覧ください。
+        </p>
+      </div>
+
       {/* ヘッダー */}
       <header
         ref={headerRef}
@@ -442,7 +474,7 @@ export default function App() {
           footerHeight={30}
         />
 
-        {/* アイドル状態の通知（30分操作が無く接続を切っている間だけ表示。画面に触れると自動復帰） */}
+        {/* アイドル状態の通知（30分操作が無く接続を切っている間だけ表示） */}
         {isIdle && (
           <div
             className="app-idle-banner"
@@ -452,7 +484,7 @@ export default function App() {
               color: theme.subtext,
             }}
           >
-            操作が無いため接続を一時停止中です（画面に触れると再開します）
+            30分間操作がなかったため接続を終了しました。再接続するにはQRコードから開き直してください
           </div>
         )}
 
@@ -476,7 +508,14 @@ export default function App() {
 
         {/* ページコンテンツ（4項目）*/}
         <div className="dashboard-page" style={{ display: currentPage === 'dashboard' ? 'flex' : 'none' }}>
-          <RobotArmDashboard theme={theme} isEditing={isEditing} onEditingChange={setIsEditing} onStatusChange={setDashboardStatus} />
+          <RobotArmDashboard
+            theme={theme}
+            isEditing={isEditing}
+            onEditingChange={setIsEditing}
+            onStatusChange={setDashboardStatus}
+            activeStep={activeStep}
+            ngSignal={ngSignal}
+          />
         </div>
 
         <div className="dashboard-page" style={{ display: currentPage === 'control' ? 'flex' : 'none' }}>

@@ -6,6 +6,7 @@ import type {CameraFeed } from '../../types/common'
 import './RobotArmDashboard.css'
 import { useCameraDeviceStreams } from '../../hooks/useCameraDeviceStreams'
 import { useGo2rtcStream } from '../../hooks/useGo2rtcStream'
+import { getOverallFlowStatus } from '../OperationResults/JobFlowDiagram'
 
 type Props = {
   theme: Theme
@@ -13,6 +14,8 @@ type Props = {
   onEditingChange: (value: boolean) => void
   plcStatusById?: Record<string, CameraStatus> 
   onStatusChange?: (status: CameraStatus) => void
+  activeStep?: number
+  ngSignal?: boolean
 }
 
 // 背景色（theme.bg）が明るい色かどうかを簡易判定
@@ -89,7 +92,15 @@ const nextCameraDefaults = (index: number): CameraFeed => ({
   totalSteps: 5,
 })
 
-export default function RobotArmDashboard({ theme, isEditing, onEditingChange, plcStatusById, onStatusChange,}: Props) {
+export default function RobotArmDashboard({
+  theme,
+  isEditing,
+  onEditingChange,
+  plcStatusById,
+  onStatusChange,
+  activeStep,
+  ngSignal,
+}: Props) {
   const isMobile = useIsMobile()
 
   const [cameras, setCameras] = useState<CameraFeed[]>(createInitialCameras())
@@ -153,6 +164,7 @@ export default function RobotArmDashboard({ theme, isEditing, onEditingChange, p
   }, [overallStatus, onStatusChange])
   const canvasBg = isLightColor(theme.bg) ? 'rgba(0, 0, 0, 0.15)' : 'rgba(255, 255, 255, 0.14)'
   const abnormalColor = isLightColor(theme.bg) ? ABNORMAL_COLOR_LIGHT : ABNORMAL_COLOR_DARK
+  const overallFlowStatus = getOverallFlowStatus(activeStep, ngSignal)
   // RB1/RB2統合ステータスカード（ガラス風）用の色。テーマの明暗で出し分ける
   const glassBg = isLightColor(theme.bg) ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)'
   const glassBorder = isLightColor(theme.bg) ? 'rgba(0, 0, 0, 0.14)' : 'rgba(255, 255, 255, 0.18)'
@@ -469,6 +481,13 @@ export default function RobotArmDashboard({ theme, isEditing, onEditingChange, p
                       
                       return (
                         <div className="robot-dashboard__rb-status-block" key={cam.id}>
+                          {i === 0 && (
+                            <div className="robot-dashboard__overall-flow">
+                              <span className="robot-dashboard__overall-flow-label">現在工程</span>
+                              <strong>{overallFlowStatus.currentLabel ?? '--'}</strong>
+                              <span>進捗 {overallFlowStatus.current || '--'} / {overallFlowStatus.total}工程</span>
+                            </div>
+                          )}
                           <div className="robot-dashboard__info-card-header">
                             {i === 0 ? 'RB1' : 'RB2'}
                           </div>

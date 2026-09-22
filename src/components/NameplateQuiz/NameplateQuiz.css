@@ -565,6 +565,13 @@
   margin: 0 0 8px;
 }
 
+.nameplate-quiz__final-rate-note {
+  font-size: clamp(13px, 1.4vw, 16px);
+  color: var(--nq-subtext, #94a3b8);
+  opacity: 0.9;
+  margin: -2px 0 10px;
+}
+
 /* ---- 正誤オーバーレイ ---- */
 .nameplate-quiz__result {
   font-size: clamp(24px, 2.4vw, 36px);

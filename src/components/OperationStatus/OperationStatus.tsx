@@ -1,5 +1,5 @@
 // OperationStatus.tsx
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import PanelFrame from '../common/PanelFrame'
 import type { Theme } from '../../types'
 
@@ -7,7 +7,7 @@ import RobotHeaderBadge from './RobotHeaderBadge'
 import AxisRow, { type AxisRowData, type AxisSideData } from './AxisRow'
 import AxisTable from './AxisTable'
 import AverageSpeedGauge from './AverageSpeedGauge'
-import RobotAxisDiagram, { AXIS_NAMES, AXIS_DISPLAY_ORDER, AXIS_ROW_FLEX, type AxisName } from './RobotAxisDiagram'
+import RobotAxisDiagram, { AXIS_NAMES, AXIS_DISPLAY_ORDER, IMAGE_JOINT_Y, computeContainRect, type AxisName } from './RobotAxisDiagram'
 import { RB1_COLOR, RB2_COLOR } from './robotColors'
 
 import './OperationStatus.css'
@@ -43,6 +43,12 @@ const THRESHOLD = 80
 const WARNING_RELEASE_THRESHOLD = 70
 const WARNING_RELEASE_DELAY_MS = 3000
 
+interface ConnectorLine {
+  axis: AxisName
+  left: { x1: number; y1: number; x2: number; y2: number }
+  right: { x1: number; y1: number; x2: number; y2: number }
+}
+
 export default function OperationStatus({
   theme,
   robotRB1,
@@ -57,6 +63,11 @@ export default function OperationStatus({
   const rb1Color = customColors.rb1 ?? RB1_COLOR
   const rb2Color = customColors.rb2 ?? RB2_COLOR
   const handleResetColors = () => setCustomColors({})
+
+  // 模式図画像（ROBOT_DARK.png / ROBOT_LIGHT.png）の出し分け。
+  // 背景色（テーマの明暗）に応じて切り替える想定だが、Theme型に明暗フラグが
+  // ない場合はここを実際のテーマ判定に置き換えること（現状はdark固定）。
+  const robotImageMode: 'dark' | 'light' = 'dark'
 
   // 軸名称はS/L/U/R/B/T固定（安川協働ロボットの実際の関節位置に対応させるため、
   // 数字のラベルや編集パネルでの名称変更は廃止した）
@@ -159,20 +170,91 @@ export default function OperationStatus({
     speed: row[side].speed,
   })
 
+  const gridRef = useRef<HTMLDivElement>(null)
+  const [connectorLines, setConnectorLines] = useState<ConnectorLine[]>([])
+  // SVGのviewBoxはgridRef.current経由でレンダー中に直接読むと、初回描画時点では
+  // まだrefがセットされておらず"0 0 0 0"になってしまい、線が一切描画されない
+  // 不具合があったため、実測後にstateへ保存してからviewBoxに使う。
+  const [gridSize, setGridSize] = useState({ width: 0, height: 0 })
+
+  useLayoutEffect(() => {
+    const grid = gridRef.current
+    if (!grid) return
+    const image = grid.querySelector<HTMLImageElement>('.robot-diagram__img')
+    if (!image) return
+
+    const updateConnectorLines = () => {
+      const rb1Rows = grid.querySelector<HTMLElement>('.axis-monitor__rows--rb1')
+      const rb2Rows = grid.querySelector<HTMLElement>('.axis-monitor__rows--rb2')
+      if (!image || !rb1Rows || !rb2Rows || !image.complete) return
+
+      const gridRect = grid.getBoundingClientRect()
+      // 接続線の左右端は「画像の実際の表示範囲」（object-fit: containで生じる
+      // 余白を除いた範囲。RobotAxisDiagram.tsxのcomputeContainRectと同じ計算を
+      // 共有し、警告マーカーの位置と必ず一致するようにしている）に揃える。
+      // 以前は模式図の列全体(diagramRect)や画像の箱全体を使っていたため、
+      // 余白がある場合に画像の実際の関節位置とズレていた。
+      const imageRect = computeContainRect(image)
+      const rb1Cards = rb1Rows.querySelectorAll<HTMLElement>('.axis-metric-card')
+      const rb2Cards = rb2Rows.querySelectorAll<HTMLElement>('.axis-metric-card')
+
+      const lines = AXIS_DISPLAY_ORDER.flatMap((name, index) => {
+        const rb1Card = rb1Cards[index]
+        const rb2Card = rb2Cards[index]
+        if (!rb1Card || !rb2Card) return []
+
+        const imageY = imageRect.top - gridRect.top + imageRect.height * IMAGE_JOINT_Y[name]
+        const rb1Rect = rb1Card.getBoundingClientRect()
+        const rb2Rect = rb2Card.getBoundingClientRect()
+        return [{
+          axis: name,
+          left: {
+            x1: rb1Rect.right - gridRect.left,
+            y1: rb1Rect.top - gridRect.top + rb1Rect.height / 2,
+            x2: imageRect.left - gridRect.left,
+            y2: imageY,
+          },
+          right: {
+            x1: imageRect.left + imageRect.width - gridRect.left,
+            y1: imageY,
+            x2: rb2Rect.left - gridRect.left,
+            y2: rb2Rect.top - gridRect.top + rb2Rect.height / 2,
+          },
+        }]
+      })
+      setConnectorLines(lines)
+      setGridSize({ width: gridRect.width, height: gridRect.height })
+    }
+
+    updateConnectorLines()
+    const observer = new ResizeObserver(updateConnectorLines)
+    observer.observe(grid)
+    image.addEventListener('load', updateConnectorLines)
+    return () => {
+      observer.disconnect()
+      image.removeEventListener('load', updateConnectorLines)
+    }
+  }, [])
+
   return (
     <PanelFrame className={`op-status op-status--${theme}`}>
       <div className="axis-monitor">
         <div className="axis-monitor__body">
           <div className="axis-monitor__main-col">
             {/* RB1/RB2ラベルは枠付きの箱(boxed)に変更し、縦に間延びさせず
-               同じ行の隣に平均速度ゲージを並べる。中央にはロボット模式図の
-               見出しとなる「トルク」バッジを配置する。
-               このヘッダー行・下の速度キャプション行・軸データ行はすべて
+               同じ行の隣に平均速度ゲージを並べる。
+               このヘッダー行・軸データ行（＋接続線オーバーレイ）はすべて
                axis-monitor__grid（RB1列／模式図列／RB2列の3列グリッド）の
                直接の子要素として並べており、模式図と各データ行の高さが
                常に揃うようにしている。 */}
-            <div className="axis-monitor__grid">
-              {/* --- 1行目：RB1バッジ・トルク見出し・RB2バッジ --- */}
+            <div className="axis-monitor__grid" ref={gridRef}>
+              {/* --- 1行目：RB1バッジ・RB2バッジ ---
+                 中央の「トルク」見出しバッジ（大きな文字＋箱）は、各軸カード
+                 （AxisMetricCard）側にTORQUE/SPEEDのアイコン＋英語名称を
+                 個別表示する仕様に変更したのに伴い廃止した。
+                 header-rb1/header-rb2はCSS側でそれぞれgrid-column: 1 / 3を明示
+                 指定しているため、中央列用の空divを挟まなくても正しい列に
+                 配置される。 */}
               <div className="axis-monitor__header-rb1">
                 <RobotHeaderBadge
                   label="RB1"
@@ -195,15 +277,6 @@ export default function OperationStatus({
                 />
               </div>
 
-              <div className="axis-monitor__header-center">
-                <div
-                  className="axis-monitor__torque-badge"
-                  style={{ color: theme.text }}
-                >
-                  トルク (N·m)
-                </div>
-              </div>
-
               <div className="axis-monitor__header-rb2">
                 <AverageSpeedGauge value={rb2AvgTorque} color={rb2Color} label="平均トルク" />
                 <RobotHeaderBadge
@@ -220,19 +293,12 @@ export default function OperationStatus({
                 />
               </div>
 
-              {/* --- 2行目：「速度」キャプション（RB1側／RB2側に1か所ずつだけ表示） --- */}
-              <span className="axis-monitor__speed-caption" style={{ color: theme.text }}>
-                速度 (deg/s)
-              </span>
-              <div className="axis-monitor__row2-spacer" aria-hidden="true" />
-              <span className="axis-monitor__speed-caption" style={{ color: theme.text }}>
-                速度 (deg/s)
-              </span>
-
-              {/* --- 3行目：RB1軸データ行 / ロボット模式図 / RB2軸データ行 ---
+              {/* --- 2行目：RB1軸データ行 / ロボット模式図 / RB2軸データ行 ---
                  表示順は先端(T)が上・根元(S)が下（模式図が床に立っている見た目と揃える）。
-                 各行のflexGrowはAXIS_ROW_FLEX（模式図の関節間隔）と共有しており、
-                 どの行がどの関節に対応するかが模式図を見ただけで分かるようにしている。 */}
+                 各カードの高さは均等(flexGrow=1)にし、どの行がどの関節に対応するかは
+                 下の接続線（実画像の関節位置IMAGE_JOINT_Y⇄各カードの実際の中心座標）で
+                 示す（以前は行の高さ比率(AXIS_ROW_FLEX)で対応させていたが、画像側の
+                 実際の関節間隔と一致せずズレていたため、この方式に変更した）。 */}
               <div className="axis-monitor__rows axis-monitor__rows--rb1">
                 {displayRows.map((row) => (
                   <AxisRow
@@ -242,12 +308,12 @@ export default function OperationStatus({
                     threshold={THRESHOLD}
                     isWarning={warningAxes[row.axis - 1] ?? false}
                     color={rb1Color}
-                    flexGrow={AXIS_ROW_FLEX[row.axisLabel as AxisName]}
+                    flexGrow={1}
                   />
                 ))}
               </div>
 
-              <RobotAxisDiagram theme={theme} warningAxes={warningAxes} />
+              <RobotAxisDiagram mode={robotImageMode} warningAxes={warningAxes} />
 
               <div className="axis-monitor__rows axis-monitor__rows--rb2">
                 {displayRows.map((row) => (
@@ -258,10 +324,45 @@ export default function OperationStatus({
                     threshold={THRESHOLD}
                     isWarning={warningAxes[row.axis - 1] ?? false}
                     color={rb2Color}
-                    flexGrow={AXIS_ROW_FLEX[row.axisLabel as AxisName]}
+                    flexGrow={1}
                   />
                 ))}
               </div>
+
+              {/* 画像内の実際の関節位置から、左右の対応カード中心へ接続する。 */}
+              <svg
+                className="axis-monitor__connectors"
+                viewBox={`0 0 ${gridSize.width} ${gridSize.height}`}
+                aria-hidden="true"
+              >
+                {connectorLines.map(({ axis, left, right }) => {
+                  const name = axis
+                  const axisIndex = AXIS_NAMES.indexOf(name)
+                  const isWarning = warningAxes[axisIndex] ?? false
+                  return (
+                    <g key={name}>
+                    <line
+                      x1={left.x1}
+                      y1={left.y1}
+                      x2={left.x2}
+                      y2={left.y2}
+                      vectorEffect="non-scaling-stroke"
+                      className={`axis-monitor__connector-line${isWarning ? ' axis-monitor__connector-line--warning' : ''}`}
+                      style={isWarning ? undefined : { stroke: rb1Color }}
+                    />
+                    <line
+                      x1={right.x1}
+                      y1={right.y1}
+                      x2={right.x2}
+                      y2={right.y2}
+                      vectorEffect="non-scaling-stroke"
+                      className={`axis-monitor__connector-line${isWarning ? ' axis-monitor__connector-line--warning' : ''}`}
+                      style={isWarning ? undefined : { stroke: rb2Color }}
+                    />
+                    </g>
+                  )
+                })}
+              </svg>
             </div>
 
             {/* モバイル表示：平均トルクカード、RB切替、軸別データ表 */}

@@ -3,8 +3,8 @@
 // =============================================
 
 export const PLC_BASE_ADDRESS = 15000 // 先頭デバイス番号 D15000
-export const PLC_RAW_WORD_COUNT = 400 // 受信ワード数（D15000～D15199）
-export const PLC_DOUBLE_WORD_COUNT = 200 // ダブルワード数（2ワードで1数値）
+export const PLC_RAW_WORD_COUNT = 300 // 受信ワード数（D15000～D15199）
+export const PLC_DOUBLE_WORD_COUNT = 150 // ダブルワード数（2ワードで1数値）
 export const PLC_DOUBLE_WORD_STEP = 2 // 1ダブルワードあたりのワード数
 
 /** グラフ用の線色（ダブルワードごとに割り当て） */
@@ -122,15 +122,15 @@ export function combineWordsToSignedInt32(lowWord: number, highWord: number): nu
   return view.getInt32(0, true)
 }
 
-/** plc-pc 形式か（200件の32bit結合済み配列） */
+/** plc-pc 形式か（150件の32bit結合済み配列） */
 export function isPrecombinedPlcValues(values: number[]): boolean {
   return values.length === PLC_DOUBLE_WORD_COUNT
 }
 
 /**
  * ダブルワード値を取得（符号付き32bit）
- * - values.length === 200 → plc-pc 送信形式（結合済み）
- * - values.length >= 400 → 生ワード2つを結合
+ * - values.length === 150 → plc-pc 送信形式（結合済み）
+ * - values.length >= 300 → 生ワード2つを結合
  */
 export function getDoubleWordValue(values: number[], startAddress: number): number | null {
   if (!isDoubleWordStartAddress(startAddress)) return null

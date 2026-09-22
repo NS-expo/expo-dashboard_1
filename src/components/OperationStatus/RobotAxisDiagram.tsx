@@ -1,26 +1,24 @@
 // RobotAxisDiagram.tsx
 //
-// STATUS画面仕様変更対応：ダッシュボード中央に安川協働ロボット（MOTOMAN-HCシリーズ、
-// 6軸垂直多関節）を模した側面模式図を配置し、S/L/U/R/B/T各軸のデータ表示位置を
-// 模式図上の実際の関節位置に対応させる。
-//
-// 実装方針：
-// ・関節の並び順・間隔（AXIS_ROW_FLEX）を「唯一の基準値」として、模式図側の
-//   関節マーカーの縦位置と、左右のAxisRow（軸データ行）のflexGrow（行の高さ配分）
-//   の両方に同じ値を使う。これにより「模式図のどの関節が、どのデータ行に対応するか」
-//   がズレなく一致する（OperationStatus.tsx側でAxisRowにflexGrowとして渡している）。
-// ・実機そのものの写真ではなく、視認性重視のスタイリッシュなSVGシルエットとする。
-//   ベース(S・旋回)→下腕(L)→上腕(U)→手首ロール(R)→手首ピッチ(B)→フランジ(T)という
-//   6軸垂直多関節の関節構成・並び順は、実機（安川MOTOMAN-HCシリーズ等の協働ロボット）
-//   から大きく外れないようにしている。
-// ・表示は根元(S)を下・先端(T)を上に固定（＝ロボットが床に立っている見た目に対応。
-//   OperationStatus.tsx側で軸データ行の描画順を根元→先端から先端→根元に反転させた
-//   のと揃えている）。
-// ・立体感演出：リンクにグラデーション＋艶ハイライト＋ドロップシャドウ、関節は
-//   段差なく繋がる「軸受け（collar）」を追加。輪郭パス（outline）を下敷きに敷いて
-//   背景から浮き上がって見えるようにしている。
+// STATUS画面仕様変更（再修正）対応：
+// ・これまで自作のSVGシルエットで描いていた模式図を、支給されたロボット外観の
+//   イラスト画像（ROBOT_DARK.png・ROBOT_LIGHT.png）に差し替えた。S/L/U/R/B/T
+//   の軸名称ラベルは画像内に焼き込み済みのため、模式図側での文字描画・関節の
+//   丸チップ表示は不要になった（警告時の発光表示のみ残す）。
+// ・画像は呼び出し側（OperationStatus.tsx）が配置するpublicフォルダ
+//   （/ROBOT_DARK.png・/ROBOT_LIGHT.png）を参照する。背景（テーマ）に応じて
+//   出し分ける想定で、どちらを使うかはmode props（'dark' | 'light'）で受け取る。
+//   実際のテーマ判定ロジックとの結線はOperationStatus.tsx側で行うこと
+//   （現状はmode省略時 'dark' 固定）。
+// ・関節間隔（AXIS_ROW_FLEX）・関節中心のY座標（JOINT_Y）は、模式図の見た目
+//   そのものには使わなくなったが、引き続き以下2箇所の「唯一の基準値」として
+//   共有する：
+//     1) 左右の軸データ行（AxisRow）のflexGrow（行の高さ配分）
+//     2) OperationStatus.tsx側で描く接続線（S/L/U/R/B/T→RB1/RB2カード）のY座標
+//   これにより「模式図のどの関節が、どのデータ行・どの接続線に対応するか」が
+//   ズレなく一致する。
 
-import type { Theme } from '../../types'
+import { useLayoutEffect, useRef, useState } from 'react'
 
 export const AXIS_NAMES = ['S', 'L', 'U', 'R', 'B', 'T'] as const
 export type AxisName = (typeof AXIS_NAMES)[number]
@@ -28,9 +26,9 @@ export type AxisName = (typeof AXIS_NAMES)[number]
 /** 画面表示順（上→下）。根元(S)を一番下、先端(T)を一番上にする */
 export const AXIS_DISPLAY_ORDER: AxisName[] = ['T', 'B', 'R', 'U', 'L', 'S']
 
-/** 関節間の間隔イメージ（合計100）。模式図の関節縦位置と、
- * 軸データ行（AxisRow）のflexGrowの両方でこの値を共有することで、
- * 「模式図のどの関節がどのデータ行に対応するか」を一致させている。 */
+/** 関節間の間隔イメージ（合計100）。軸データ行（AxisRow）のflexGrowと、
+ * 接続線（OperationStatus.tsx）のY座標の両方でこの値を共有することで、
+ * 「どの軸がどのデータ行・どの接続線に対応するか」を一致させている。 */
 export const AXIS_ROW_FLEX: Record<AxisName, number> = {
   T: 14,
   B: 17,
@@ -38,6 +36,16 @@ export const AXIS_ROW_FLEX: Record<AxisName, number> = {
   U: 20,
   L: 13,
   S: 16,
+}
+
+/** ROBOT_*.png内の各軸ラベル（関節付近）のY位置。画像の縦方向に対する割合。 */
+export const IMAGE_JOINT_Y: Record<AxisName, number> = {
+  T: 0.06,
+  B: 0.22,
+  R: 0.31,
+  U: 0.36,
+  L: 0.76,
+  S: 0.91,
 }
 
 // 関節中心のY座標（0〜100）。AXIS_ROW_FLEXの累積区間の中間点として算出する
@@ -56,160 +64,104 @@ function computeJointCenters(): Record<AxisName, number> {
   return centers
 }
 
-const JOINT_Y = computeJointCenters()
+/** 関節中心のY座標（0〜100）。AxisRowのflexGrow・接続線のY座標として共有する */
+export const JOINT_Y = computeJointCenters()
 
-// 関節のX座標（0〜100）。ベース(S)を中心に、肘・手首が左右へ振れた
-// 「く」の字姿勢（安川協働ロボットの標準姿勢に近いイメージ）にしている。
-const JOINT_X: Record<AxisName, number> = {
-  S: 50,
-  L: 38,
-  U: 64,
-  R: 55,
-  B: 45,
-  T: 50,
+/** object-fit: containで表示している<img>の「実際に絵が見えている範囲」を
+ * ビューポート座標で返す。imgの要素自体のgetBoundingClientRect()は箱全体
+ * （レターボックスの余白込み）を返してしまうため、これを使わずに
+ * naturalWidth/naturalHeightと箱のアスペクト比から実際の絵の範囲を計算する。
+ * OperationStatus.tsx側の接続線計算とこのコンポーネント内の警告マーカー配置の
+ * 両方で共有することで、画像上の同じ関節位置を指すようにしている。 */
+export function computeContainRect(img: HTMLImageElement) {
+  const rect = img.getBoundingClientRect()
+  const naturalW = img.naturalWidth
+  const naturalH = img.naturalHeight
+  if (!naturalW || !naturalH) return rect
+
+  const boxRatio = rect.width / rect.height
+  const imgRatio = naturalW / naturalH
+
+  if (imgRatio > boxRatio) {
+    // 箱より横長の画像 → 上下にレターボックス
+    const height = rect.width / imgRatio
+    return { top: rect.top + (rect.height - height) / 2, left: rect.left, width: rect.width, height }
+  }
+  // 箱より縦長の画像 → 左右にレターボックス
+  const width = rect.height * imgRatio
+  return { top: rect.top, left: rect.left + (rect.width - width) / 2, width, height: rect.height }
 }
-
-// 関節間リンクの太さ（根元ほど太く、先端ほど細く）
-const LINK_WIDTH: Record<string, number> = {
-  'S-L': 8.5,
-  'L-U': 7,
-  'U-R': 5.6,
-  'R-B': 4.6,
-  'B-T': 3.4,
-}
-
-// 各関節の「軸受け」半径。前後リンクの太い方に合わせておくことで、
-// リンクの太さが変わる場所でも段差なくなめらかに繋がる。
-const JOINT_COLLAR: Record<AxisName, number> = {
-  S: 4.6,
-  L: 4.6,
-  U: 3.9,
-  R: 3.1,
-  B: 2.6,
-  T: 2.0,
-}
-
-const LINKS: Array<[AxisName, AxisName, number]> = [
-  ['S', 'L', LINK_WIDTH['S-L']],
-  ['L', 'U', LINK_WIDTH['L-U']],
-  ['U', 'R', LINK_WIDTH['U-R']],
-  ['R', 'B', LINK_WIDTH['R-B']],
-  ['B', 'T', LINK_WIDTH['B-T']],
-]
-
-const OUTLINE_COLOR = 'rgba(10, 14, 20, 0.65)'
 
 interface Props {
-  theme: Theme
+  /** 表示する画像をdark/lightどちらにするか。省略時は'dark'固定。
+   * テーマの明暗との結線はOperationStatus.tsx側で行う想定。 */
+  mode?: 'dark' | 'light'
   /** 軸ごとの警告状態（配列の並びはS〜T＝AXIS_NAMESの順。OperationStatus.tsxの
    * warningAxesをそのまま渡す） */
   warningAxes?: boolean[]
 }
 
-export default function RobotAxisDiagram({ theme, warningAxes = [] }: Props) {
-  // outline=true のときは輪郭線用に少し太め・単色（下敷き）で描く。
-  // outline=false のときは本体（グラデーション＋艶ハイライト＋ドロップシャドウ）を描く。
-  const link = (a: AxisName, b: AxisName, width: number, outline = false) => {
-    if (outline) {
-      return (
-        <path
-          key={`${a}-${b}-outline`}
-          d={`M ${JOINT_X[a]} ${JOINT_Y[a]} L ${JOINT_X[b]} ${JOINT_Y[b]}`}
-          stroke={OUTLINE_COLOR}
-          strokeWidth={width + 1.4}
-          strokeLinecap="round"
-          fill="none"
-        />
-      )
-    }
-    return (
-      <g key={`${a}-${b}`} filter="url(#robotDiagramShadow)">
-        <path
-          d={`M ${JOINT_X[a]} ${JOINT_Y[a]} L ${JOINT_X[b]} ${JOINT_Y[b]}`}
-          stroke="url(#robotDiagramBody)"
-          strokeWidth={width}
-          strokeLinecap="round"
-          fill="none"
-        />
-        {/* ハイライト線：本体より細く、少し明るい線を上に重ねて艶を出す */}
-        <path
-          d={`M ${JOINT_X[a]} ${JOINT_Y[a]} L ${JOINT_X[b]} ${JOINT_Y[b]}`}
-          stroke="rgba(255,255,255,0.5)"
-          strokeWidth={width * 0.28}
-          strokeLinecap="round"
-          fill="none"
-        />
-      </g>
-    )
-  }
+export default function RobotAxisDiagram({ mode = 'dark', warningAxes = [] }: Props) {
+  const imageSrc = mode === 'light' ? '/ROBOT_LIGHT.png' : '/ROBOT_DARK.png'
+  const containerRef = useRef<HTMLDivElement>(null)
+  const imgRef = useRef<HTMLImageElement>(null)
+  // 警告マーカーのtop位置は「絵の実際の範囲(computeContainRect)」基準のpx値で持つ
+  // （%指定だと箱基準になり、レターボックスがある画像でズレるため）
+  const [markerTops, setMarkerTops] = useState<Partial<Record<AxisName, number>>>({})
 
-  const collar = (name: AxisName, outline = false) => (
-    <circle
-      key={`collar-${name}${outline ? '-outline' : ''}`}
-      cx={JOINT_X[name]}
-      cy={JOINT_Y[name]}
-      r={outline ? JOINT_COLLAR[name] + 0.7 : JOINT_COLLAR[name]}
-      fill={outline ? OUTLINE_COLOR : 'url(#robotDiagramBody)'}
-    />
-  )
+  useLayoutEffect(() => {
+    const container = containerRef.current
+    const img = imgRef.current
+    if (!container || !img) return
+
+    const update = () => {
+      if (!img.complete || !img.naturalWidth) return
+      const containerRect = container.getBoundingClientRect()
+      const contentRect = computeContainRect(img)
+      const tops: Partial<Record<AxisName, number>> = {}
+      AXIS_DISPLAY_ORDER.forEach((name) => {
+        tops[name] = contentRect.top - containerRect.top + contentRect.height * IMAGE_JOINT_Y[name]
+      })
+      setMarkerTops(tops)
+    }
+
+    update()
+    const observer = new ResizeObserver(update)
+    observer.observe(container)
+    img.addEventListener('load', update)
+    return () => {
+      observer.disconnect()
+      img.removeEventListener('load', update)
+    }
+  }, [])
 
   return (
-    <div className="robot-diagram">
-      <svg
-        className="robot-diagram__svg"
-        viewBox="0 0 100 100"
-        preserveAspectRatio="none"
+    <div className="robot-diagram" ref={containerRef}>
+      <img
+        ref={imgRef}
+        className="robot-diagram__img"
+        src={imageSrc}
+        alt=""
         aria-hidden="true"
-      >
-        <defs>
-          <linearGradient id="robotDiagramBody" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="#f2f5f8" />
-            <stop offset="30%" stopColor="#d6dce3" />
-            <stop offset="55%" stopColor="#9aa4b0" />
-            <stop offset="100%" stopColor="#6b7480" />
-          </linearGradient>
+        draggable={false}
+      />
 
-          <filter id="robotDiagramShadow" x="-30%" y="-30%" width="160%" height="160%">
-            <feDropShadow dx="0" dy="1.2" stdDeviation="1" floodColor="#000" floodOpacity="0.45" />
-          </filter>
-        </defs>
-
-        {/* 接地影（床に立っている感じを出す） */}
-        <ellipse cx="50" cy={JOINT_Y.S + 6.8} rx="13" ry="1.8" fill="#000" opacity="0.25" />
-
-        {/* 設置ベース（少し立体感を出す） */}
-        <rect x="40" y={JOINT_Y.S + 4.2} width="20" height="4" rx="1.4" fill="#0d1117" />
-        <rect x="41" y={JOINT_Y.S + 4.2} width="18" height="1.4" rx="0.7" fill="#2a323c" opacity="0.8" />
-
-        {/* 1. 輪郭（下敷き）：シルエットを背景から浮き上がらせる */}
-        {LINKS.map(([a, b, w]) => link(a, b, w, true))}
-        {AXIS_DISPLAY_ORDER.map((name) => collar(name, true))}
-
-        {/* 2. 本体：リンク＋関節の軸受け（段差なく繋がる） */}
-        {LINKS.map(([a, b, w]) => link(a, b, w))}
-        {AXIS_DISPLAY_ORDER.map((name) => collar(name))}
-
-        {/* ツールフランジ（T軸先端） */}
-        <circle cx={JOINT_X.T} cy={JOINT_Y.T - 2.6} r="2.2" fill="#161c24" />
-      </svg>
-
+      {/* 警告時のみ、画像内の実際の関節位置（IMAGE_JOINT_Y＝絵の縦方向に対する割合）に
+         発光マーカーを絶対配置で重ねる。以前はAXIS_ROW_FLEX比率のflexセルで
+         位置決めしていたため、実画像の関節位置とズレる場合があった。 */}
       <div className="robot-diagram__cells">
         {AXIS_DISPLAY_ORDER.map((name) => {
           const axisIndex = AXIS_NAMES.indexOf(name)
           const isWarning = warningAxes[axisIndex] ?? false
+          const top = markerTops[name]
+          if (!isWarning || top === undefined) return null
           return (
-            <div
+            <span
               key={name}
-              className="robot-diagram__cell"
-              style={{ flexGrow: AXIS_ROW_FLEX[name], flexBasis: 0 }}
-            >
-              <div
-                className={`robot-diagram__joint${isWarning ? ' robot-diagram__joint--warning' : ''}`}
-                style={{ borderColor: isWarning ? '#ff4d4f' : `${theme.text}66`, color: theme.text }}
-              >
-                {name}
-              </div>
-            </div>
+              className="robot-diagram__joint-warning"
+              style={{ top }}
+              aria-hidden="true"
+            />
           )
         })}
       </div>

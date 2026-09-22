@@ -1,22 +1,16 @@
 // AxisRow.tsx
 //
-// STATUS画面仕様変更対応：中央に共有のロボット模式図（RobotAxisDiagram）を
-// 配置する構成に変更したため、本コンポーネントは「RB1側だけ」または
-// 「RB2側だけ」の軸データ（速度＋トルク）1行分を描画する役割に変更した
-// （旧版は左右2ロボット分＋中央の軸ラベルボックスを1行にまとめて描画していた。
-//  軸名称の編集機能も、軸名がS/L/U/R/B/T固定になったことに伴い廃止した）。
-//
-// side='rb1' … [SpeedBar][TorqueBar]（模式図側＝右寄りにTorqueBarを配置）
-// side='rb2' … [TorqueBar][SpeedBar]（模式図側＝左寄りにTorqueBarを配置）
-// のように、中央（模式図）に近い側に必ずTorqueBarが来るようにし、
-// 模式図を挟んで左右対称（ピラミッド型）に読めるようにしている。
+// STATUS画面仕様変更（再修正）対応：
+// 「速度ゲージ」「トルクバー」を横に2本並べる構成をやめ、1軸＝1枚のカード
+// （AxisMetricCard：トルク行＋速度行の2段構成）にまとめた。本コンポーネントは
+// 引き続き「RB1側だけ」または「RB2側だけ」の軸データ1行分を受け取り、
+// 色・しきい値判定（警告色への切替）をAxisMetricCardに渡す役割のみを持つ。
 //
 // 行の高さは軸ごとに均等ではなく、RobotAxisDiagramと共有するAXIS_ROW_FLEX比率
 // （関節間隔のイメージ）に合わせたflexGrowを呼び出し側（OperationStatus.tsx）
 // から受け取る。これにより模式図の関節位置とデータ行の高さが常に一致する。
 
-import TorqueBar from './TorqueBar'
-import SpeedBar from './SpeedBar'
+import AxisMetricCard from './AxisMetricCard'
 import { RB1_COLOR, RB2_COLOR, WARN_COLOR } from './robotColors'
 
 /** 軸データ1行分（RB1・RB2両方）。AxisTable.tsx（モバイル表）側は
@@ -40,6 +34,8 @@ export interface AxisSideData {
 interface Props {
   data: AxisSideData
   side: 'rb1' | 'rb2'
+  /** しきい値（%）。現状はAxisMetricCard側では未使用だが、呼び出し側との
+   * インターフェース互換のため引き続き受け取る（しきい値ラインの再追加に備える）。 */
   threshold: number
   /** 編集パネルで変更されたRB色。省略時はside側のデフォルト色 */
   color?: string
@@ -49,46 +45,21 @@ interface Props {
   flexGrow: number
 }
 
-export default function AxisRow({ data, side, threshold, color, isWarning = false, flexGrow }: Props) {
+export default function AxisRow({ data, side, color, isWarning = false, flexGrow }: Props) {
   const defaultColor = side === 'rb1' ? RB1_COLOR : RB2_COLOR
   const baseColor = color ?? defaultColor
   const torqueColor = isWarning ? WARN_COLOR : baseColor
 
-  const speedBar = (
-    <SpeedBar
-      value={data.speed}
-      color={baseColor}
-      valueSide={side === 'rb1' ? 'right' : 'left'}
-      reverse={side === 'rb1'}
-    />
-  )
-
-  const torqueBar = (
-    <TorqueBar
-      side={side === 'rb1' ? 'left' : 'right'}
-      value={data.torqueValue}
-      peak={data.torquePeak}
-      color={torqueColor}
-      threshold={threshold}
-    />
-  )
-
   return (
-    <div
-      className={`axis-row axis-row--${side}${isWarning ? ' axis-row--warning' : ''}`}
-      style={{ flexGrow, flexBasis: 0 }}
-    >
-      {side === 'rb1' ? (
-        <>
-          {speedBar}
-          {torqueBar}
-        </>
-      ) : (
-        <>
-          {torqueBar}
-          {speedBar}
-        </>
-      )}
-    </div>
+    <AxisMetricCard
+      side={side}
+      torqueValue={data.torqueValue}
+      torquePeak={data.torquePeak}
+      speedValue={data.speed}
+      color={baseColor}
+      torqueColor={torqueColor}
+      isWarning={isWarning}
+      flexGrow={flexGrow}
+    />
   )
 }

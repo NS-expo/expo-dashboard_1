@@ -16,7 +16,9 @@ html, body {
 
 #root {
   width: 100%;
-  height: 100vh;
+  height: 100vh; /* フォールバック（古いブラウザ用） */
+  height: calc(var(--app-vh, 1vh) * 100); /* JSで実測したvisualViewport高さ（App.tsx参照） */
+  height: 100dvh; /* 対応ブラウザではこちらが最終的に使われる */
   max-width: 100%;
   margin: 0 auto;
   min-height: 0;
@@ -157,4 +159,53 @@ html, body {
     text-align: center;
     white-space: normal;
   }
+}
+/* =============================================
+   スマホ横向き対策
+   ---------------------------------------------
+   Webサイト側から画面の回転そのものを禁止することはできない
+   （screen.orientation.lock() はフルスクリーン時のAndroid Chrome系でしか
+   使えず、iOS Safariは非対応）。そのため実務上は「横向きのときだけ
+   全画面オーバーレイで操作をブロックし、縦向きを案内する」方式を使う。
+   ・(hover: none) and (pointer: coarse) でタッチデバイスのみに限定
+     → 会場の52インチモニタ（マウス操作）には影響しない
+   ・max-height: 900px を条件に加え、横向きにしたスマホ・小型タブレットのみ対象にする
+   オーバーレイ本体（.orientation-lock）はApp.tsxに追加している
+   ============================================= */
+.orientation-lock {
+  display: none;
+}
+
+@media (orientation: landscape) and (hover: none) and (pointer: coarse) and (max-height: 900px) {
+  .orientation-lock {
+    display: flex;
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 18px;
+    background: #0b0e21;
+    color: #f1f5f9;
+    text-align: center;
+    padding: 24px;
+  }
+
+  .orientation-lock__icon {
+    font-size: 48px;
+    display: inline-block;
+    animation: orientation-lock-spin 1.6s ease-in-out infinite;
+  }
+
+  .orientation-lock__text {
+    font-size: 16px;
+    line-height: 1.7;
+    max-width: 280px;
+  }
+}
+
+@keyframes orientation-lock-spin {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(90deg); }
 }
