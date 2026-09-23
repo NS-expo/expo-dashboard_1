@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import PanelFrame from '../common/PanelFrame'
 import JobFlowDiagram from './JobFlowDiagram'
 import { useIsMobile } from '../../hooks/useMediaQuery'
-import type { CycleRecord, CycleStatus } from '../../hooks/useCycleHistory'
+import type { CycleRecord } from '../../hooks/useCycleHistory'
 import type { Theme } from '../../types'
 import './OperationResults.css'
 
@@ -23,6 +23,9 @@ export interface MetricPoint {
   /** 検査NG回数 */
   ngCount: number
 }
+
+
+
 
 type MetricKey = Exclude<keyof MetricPoint, 'date'>
 
@@ -67,6 +70,7 @@ interface OperationResultsProps {
   hourlyTrend?: HourlyTrendPoint[]
   onEditingChange: (value: boolean) => void
 }
+
 
 const CHART_W = 560
 const PIE_CANVAS_H = 460
@@ -130,17 +134,7 @@ const OKNG_DEFS: { key: MetricKey; label: string; defaultColor: string }[] = [
   { key: 'ngCount', label: 'NG', defaultColor: '#e0503f' },
 ]
 
-const STATUS_LABEL: Record<CycleStatus, string> = {
-  normal: '正常',
-  abnormal: '異常',
-  pending: '判定中',
-}
 
-const STATUS_COLOR: Record<CycleStatus, string> = {
-  normal: '#4fbf8f',
-  abnormal: '#e0503f',
-  pending: '#7d8aa8',
-}
 
 /** 異常回数・取付実行回数・取出実行回数の推移サンプル値（PLCアドレス確定まではこちらを表示）。
  *  横軸は10:00スタートの2時間を5ポイントに等分（30分刻み）。
@@ -163,17 +157,37 @@ function formatHms(sec?: number) {
   const pad = (n: number) => String(n).padStart(2, '0')
   return `${pad(h)}：${pad(m)}：${pad(s)}`
 }
+/** サイクルタイム表示用：秒 → "□□：□□"（分：秒。時は使わない前提のため省略） */
+function formatMmSs(sec?: number) {
+  if (sec === undefined || sec === null || sec < 0 || Number.isNaN(sec)) return '--：--'
+  const total = Math.floor(sec)
+  const m = Math.floor(total / 60)
+  const s = total % 60
+  const pad = (n: number) => String(n).padStart(2, '0')
+  return `${pad(m)}：${pad(s)}`
+}
+
+/** 前回タイムとの差表示用：秒 → "+3.2秒" / "-1.5秒" / "±0.0秒" / null→"--" */
+function formatDiffSec(diff: number | null) {
+  if (diff === null) return '--'
+  const sign = diff > 0 ? '+' : diff < 0 ? '-' : '±'
+  return `${sign}${Math.abs(diff).toFixed(1)}秒`
+}
 
 /** 稼働時間カード表示用：秒 → "□□：□□"（時：分）。
  *  PLC側がD15002(時)・D15004(分)を別々に持っているのに合わせた表記。 */
-function formatOperatingTime(sec?: number) {
-  if (sec === undefined || sec === null || sec < 0 || Number.isNaN(sec)) return '--：--'
-  const total = Math.floor(sec)
-  const h = Math.floor(total / 3600)
-  const m = Math.floor((total % 3600) / 60)
-  const pad = (n: number) => String(n).padStart(2, '0')
-  return `${pad(h)}：${pad(m)}`
-}
+function formatOperatingTime(sec?: number) { 
+  if ( sec === undefined ||
+       sec === null || 
+       sec < 0 || Number.isNaN(sec) 
+  ) {
+     return '--h--min' 
+  }
+  const total = Math.floor(sec) 
+  const h = Math.floor(total / 3600) 
+  const m = Math.floor((total % 3600) / 60) 
+  return `${h}h${m}min` }
+
 
 /** 指定した時刻を30分単位に切り捨てて "HH:MM" ラベルを返す。
  *  stepsBack を渡すと、そこから30分刻みで遡ったラベルを返す（直近点から過去方向へ生成する用途）。
@@ -240,6 +254,8 @@ export default function OperationResults({
     return () => window.clearInterval(timer)
   }, [])
 
+
+  
   /** サイクル履歴（⑤）。PLC側が直近5件を保持するようになったため、算出は呼び出し元
    *  （usePlcCycleSignals）で行い、ここでは整形済みの配列を受け取るだけにしている。 */
   const history = cycleHistory ?? []
@@ -415,6 +431,9 @@ const hourlyData = useMemo(() => {
    *  やや小さめのフォントで表示する（"BEST"の文字はさらに一段小さく）。
    *  取付／取出それぞれのサイクルタイム・ベストタイムはD15032〜／D15052〜（config/cycleAddresses.ts）
    *  でPLCから確定アドレスが取れるようになったため、フォールバックは廃止した。 */
+   
+
+  
   const cycleTimeSection = (
      <div className="op-results__cycletime-section">
       <span
@@ -769,31 +788,40 @@ const hourlyData = useMemo(() => {
               <th>開始時刻</th>
               <th>終了時刻</th>
               <th>サイクルタイム</th>
-              <th>ステータス</th>
+              <th>前回との差</th>
             </tr>
           </thead>
-          <tbody>
-            {displayedHistory.length === 0 && (
-              <tr>
-                <td colSpan={5} style={{ color: theme.subtext }}>
-                  データ収集中…
-                </td>
-              </tr>
-            )}
-            {displayedHistory.map((rec) => (
-              <tr key={rec.no} className={rec.no === flashNo ? 'op-results__cycle-history-row--enter' : undefined} style={{ color: theme.text }}>
-                <td>{rec.no}</td>
-                <td>{rec.startTime}</td>
-                <td>{rec.endTime}</td>
-                <td>{rec.cycleTimeSec.toFixed(1)} 秒</td>
-                <td>
-                  <span className="op-results__status-pill" style={{ background: STATUS_COLOR[rec.status] }}>
-                    {STATUS_LABEL[rec.status]}
-                  </span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
+
+  <tbody>
+  {displayedHistory.length === 0 && (
+    <tr>
+      <td colSpan={5} style={{ color: theme.subtext }}>
+        データ収集中…
+      </td>
+    </tr>
+  )}
+{displayedHistory.map((rec) => (
+  <tr key={rec.no} className={rec.no === flashNo ? 'op-results__cycle-history-row--enter' : undefined} style={{ color: theme.text }}>
+    <td>{rec.no}</td>
+    <td>{rec.startTime}</td>
+    <td>{rec.endTime}</td>
+    <td>{formatMmSs(rec.cycleTimeSec)}</td>
+    <td>{formatDiffSec(rec.diffFromPrevSec)}</td>
+  </tr>
+))}
+  {/* 履歴件数が5件未満の間、テーブルの高さが変動して全体の自動縮小(contentScale)に
+      影響しないよう、不足分を非表示の空行で埋めて常に5行分の高さを確保する */}
+  {displayedHistory.length > 0 &&
+    Array.from({ length: CYCLE_HISTORY_DISPLAY_MAX - displayedHistory.length }).map((_, i) => (
+      <tr key={`filler-${i}`} style={{ visibility: 'hidden' }} aria-hidden="true">
+        <td>-</td>
+        <td>--:--</td>
+        <td>--:--</td>
+        <td>--:--</td>
+        <td>-</td>
+      </tr>
+    ))}
+</tbody>
         </table>
       </div>
   )
@@ -894,5 +922,6 @@ const hourlyData = useMemo(() => {
         )}
       </div>
     </PanelFrame>
+    
   )
 }

@@ -21,7 +21,7 @@ export const RB_FLOW_ADDRESSES = [RB1_FLOW_STEP_ADDRESS, RB2_FLOW_STEP_ADDRESS]
  * 例: { 1: '刃物取付', 2: '刃物取外', ... }
  */
 export const RB1_FLOW_STEP_LABELS: Record<number, string> = {
-    1:'勘合',
+    1:'下刃撮像',
     2:'位置決め',
     3:'検査',
     4:'リングスプリング取付',

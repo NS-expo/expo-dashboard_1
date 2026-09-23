@@ -9,6 +9,7 @@
 // PLC自身が稼働時間・ベストサイクルタイム・直近5件の履歴を保持して送ってくるため、
 // コード側は値を読んで整形するだけで済みます。
 
+import { useRef } from 'react'
 import { getLatestDataPoint, readAddress } from '../utils/usePlcSignalUtils'
 import type { DataPoint } from '../types'
 import {
@@ -24,7 +25,8 @@ import {
   LOOSEN_BEST_CYCLE_SEC_ADDRESS,
   CYCLE_HISTORY_SLOTS,
 } from '../config/cycleAddresses'
-import { buildCycleHistory, type CycleRecord } from './useCycleHistory'
+import { createCycleHistoryState, buildCycleHistory } from './useCycleHistory'
+import type { CycleRecord } from './useCycleHistory'
 
 export interface PlcCycleMetrics {
   /** 稼働時間（時） */
@@ -51,6 +53,8 @@ function minSecToTotalSec(min: number, sec: number) {
 
 export function usePlcCycleSignals(data: DataPoint[]): PlcCycleMetrics {
   const latest = getLatestDataPoint(data)
+
+  const cycleHistoryStateRef = useRef(createCycleHistoryState())
 
   const uptimeHour = readAddress(latest, UPTIME_HOUR_ADDRESS)
   const uptimeMinute = readAddress(latest, UPTIME_MINUTE_ADDRESS)
@@ -89,7 +93,7 @@ export function usePlcCycleSignals(data: DataPoint[]): PlcCycleMetrics {
     cycleTimeSec: readAddress(latest, slot.cycleTimeSec),
   }))
 
-  const cycleHistory = buildCycleHistory(slotValues)
+    const cycleHistory = buildCycleHistory(slotValues, cycleHistoryStateRef.current)
 
   return {
     uptimeHour,

@@ -57,11 +57,14 @@ export function useGo2rtcStream(streamName: string | undefined) {
 
       pc.ontrack = (ev) => {
         if (cancelled) return
+        // デバッグ用：映像トラックを受信できたかがここでわかる
+        console.log(`[go2rtc:${streamName}] ontrack`, ev.streams[0] ?? ev.track)
         setStream(ev.streams[0] ?? new MediaStream([ev.track]))
         setError(null)
       }
 
       pc.onconnectionstatechange = () => {
+        console.log(`[go2rtc:${streamName}] connectionState =`, pc.connectionState)
         if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') {
           if (cancelled) return
           setError('接続が切断されました。再接続しています…')
@@ -70,17 +73,27 @@ export function useGo2rtcStream(streamName: string | undefined) {
         }
       }
 
+      // Safari等 connectionState が実装されていない/不安定なブラウザ向けの保険
+      pc.oniceconnectionstatechange = () => {
+        console.log(`[go2rtc:${streamName}] iceConnectionState =`, pc.iceConnectionState)
+      }
+
       try {
         const offer = await pc.createOffer()
         await pc.setLocalDescription(offer)
         await waitForIceGatheringComplete(pc)
 
-        const res = await fetch(`${GO2RTC_BASE}/api/webrtc?src=${streamName}`, {
+        const url = `${GO2RTC_BASE}/api/webrtc?src=${streamName}`
+        console.log(`[go2rtc:${streamName}] POST`, url)
+
+        const res = await fetch(url, {
           method: 'POST',
           headers: { 'Content-Type': 'application/sdp' },
           body: pc.localDescription?.sdp,
         })
         if (!res.ok) {
+          const body = await res.text().catch(() => '')
+          console.error(`[go2rtc:${streamName}] HTTP ${res.status}`, body)
           if (!cancelled) {
             setError(`go2rtc接続失敗 (${res.status})`)
             scheduleReconnect()
@@ -91,7 +104,9 @@ export function useGo2rtcStream(streamName: string | undefined) {
         if (cancelled) return
         await pc.setRemoteDescription({ type: 'answer', sdp: answerSdp })
         setError(null)
-      } catch {
+      } catch (err) {
+        // ここで握りつぶさずログに出す（原因究明のため必須）
+        console.error(`[go2rtc:${streamName}] connect failed`, err)
         if (!cancelled) {
           setError('WebRTC接続エラー。再接続しています…')
           scheduleReconnect()

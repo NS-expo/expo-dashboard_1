@@ -6,6 +6,9 @@ import type {CameraFeed } from '../../types/common'
 import './RobotArmDashboard.css'
 import { useCameraDeviceStreams } from '../../hooks/useCameraDeviceStreams'
 import { useGo2rtcStream } from '../../hooks/useGo2rtcStream'
+import { RB1_FLOW_STEP_LABELS, RB2_FLOW_STEP_LABELS } from '../../config/rbFlowAddresses'
+// 全体フロー（D15000）の現在工程情報。JobFlowDiagram側と同じロジックを共有するためここから取得する
+// ※ パスはOperationResults配下にJobFlowDiagram.tsxがある想定。実際の配置が異なる場合は調整してください
 import { getOverallFlowStatus } from '../OperationResults/JobFlowDiagram'
 
 type Props = {
@@ -14,8 +17,28 @@ type Props = {
   onEditingChange: (value: boolean) => void
   plcStatusById?: Record<string, CameraStatus> 
   onStatusChange?: (status: CameraStatus) => void
+  // RB1・RB2それぞれの現在工程ステップ（usePlcRbFlowSignals の戻り値をそのまま渡す想定）
+  rb1Step?: number
+  rb2Step?: number
+  // 全体フローの現在工程ステップ（D15000、usePlcJobFlowSignals の activeStep をそのまま渡す想定）
   activeStep?: number
   ngSignal?: boolean
+}
+
+// ステップ番号 + ラベル表から「現在工程」表示用の情報を組み立てる
+function buildFlowStatus(
+  step: number | undefined,
+  labels: Record<number, string>,
+  ngSignal?: boolean
+) {
+  const total = Object.keys(labels).length
+  if (ngSignal) {
+    return { currentLabel: '異常', current: step ?? 0, total }
+  }
+  if (!step) {
+    return { currentLabel: '--', current: 0, total }
+  }
+  return { currentLabel: labels[step] ?? `工程${step}`, current: step, total }
 }
 
 // 背景色（theme.bg）が明るい色かどうかを簡易判定
@@ -33,6 +56,7 @@ function isLightColor(hex: string): boolean {
 // --- 台数の制約値 ---
 const MIN_CAMERAS = 1
 const MAX_CAMERAS = 8
+
 
 // メイン画面で正常時にカメラを自動切替する間隔
 const ROTATE_INTERVAL_MS = 10000
@@ -98,6 +122,8 @@ export default function RobotArmDashboard({
   onEditingChange,
   plcStatusById,
   onStatusChange,
+  rb1Step,
+  rb2Step,
   activeStep,
   ngSignal,
 }: Props) {
@@ -164,7 +190,11 @@ export default function RobotArmDashboard({
   }, [overallStatus, onStatusChange])
   const canvasBg = isLightColor(theme.bg) ? 'rgba(0, 0, 0, 0.15)' : 'rgba(255, 255, 255, 0.14)'
   const abnormalColor = isLightColor(theme.bg) ? ABNORMAL_COLOR_LIGHT : ABNORMAL_COLOR_DARK
+  const rb1FlowStatus = buildFlowStatus(rb1Step, RB1_FLOW_STEP_LABELS, ngSignal)
+  const rb2FlowStatus = buildFlowStatus(rb2Step, RB2_FLOW_STEP_LABELS, ngSignal)
+  // 共通「現在工程」カードは、RB1の値の流用ではなくD15000（全体フロー）由来の値を使う
   const overallFlowStatus = getOverallFlowStatus(activeStep, ngSignal)
+
   // RB1/RB2統合ステータスカード（ガラス風）用の色。テーマの明暗で出し分ける
   const glassBg = isLightColor(theme.bg) ? 'rgba(0, 0, 0, 0.05)' : 'rgba(255, 255, 255, 0.08)'
   const glassBorder = isLightColor(theme.bg) ? 'rgba(0, 0, 0, 0.14)' : 'rgba(255, 255, 255, 0.18)'
@@ -462,7 +492,7 @@ export default function RobotArmDashboard({
                     </div>
                     <div className="robot-dashboard__info-row">
                       <span className="robot-dashboard__info-row-label">工程内容</span>
-                      <span>{cam.processContent || '-'}</span>
+                      <span className="robot-dashboard__info-row-value">{cam.processContent || '-'}</span>
                     </div>
                     <div className="robot-dashboard__info-row">
                       <span className="robot-dashboard__info-row-label">進捗</span>
@@ -475,19 +505,19 @@ export default function RobotArmDashboard({
               {/* RB1・RB2をまとめた1枚のガラス風ステータスカード（縦長） */}
               {(cameras[0] || cameras[1]) && (
                 <div className="robot-dashboard__rb-status-card">
+                  {/* 現在工程はRB1固有ではなく、RB1・RB2を含む全体の現在工程を表す共通表示 */}
+                  <div className="robot-dashboard__overall-flow">
+                    <span className="robot-dashboard__overall-flow-label">現在工程</span>
+                    <strong>{overallFlowStatus.currentLabel ?? '--'}</strong>
+                    <span>進捗 {overallFlowStatus.current || '--'} / {overallFlowStatus.total}工程</span>
+                  </div>
                   {[cameras[0], cameras[1]]
                     .filter((cam): cam is CameraFeed => Boolean(cam))
                     .map((cam, i) => {
-                      
+                      // RB1はrb1FlowStatus（D15172）、RB2はrb2FlowStatus（D15174）をPLCから受け取って表示する
+                      const flowStatus = i === 0 ? rb1FlowStatus : rb2FlowStatus
                       return (
                         <div className="robot-dashboard__rb-status-block" key={cam.id}>
-                          {i === 0 && (
-                            <div className="robot-dashboard__overall-flow">
-                              <span className="robot-dashboard__overall-flow-label">現在工程</span>
-                              <strong>{overallFlowStatus.currentLabel ?? '--'}</strong>
-                              <span>進捗 {overallFlowStatus.current || '--'} / {overallFlowStatus.total}工程</span>
-                            </div>
-                          )}
                           <div className="robot-dashboard__info-card-header">
                             {i === 0 ? 'RB1' : 'RB2'}
                           </div>
@@ -497,11 +527,11 @@ export default function RobotArmDashboard({
                           </div>
                           <div className="robot-dashboard__info-row">
                             <span className="robot-dashboard__info-row-label">工程内容</span>
-                            <span>{cam.processContent || '-'}</span>
+                            <span className="robot-dashboard__info-row-value">{flowStatus.currentLabel}</span>
                           </div>
                           <div className="robot-dashboard__info-row">
                             <span className="robot-dashboard__info-row-label">進捗</span>
-                            <span>{cam.completedSteps ?? 0} / {cam.totalSteps ?? 0}</span>
+                            <span>{flowStatus.current || 0} / {flowStatus.total}</span>
                           </div>
                         </div>
                       )

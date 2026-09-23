@@ -32,7 +32,7 @@
 
 /* ===== モニタ（52インチ等の大画面）向け：見出し・進捗文字を拡大 =====
    768px超（モバイル以外）が対象。最低文字サイズ20px方針のため、モバイルも上のベース値(20px)を適用する */
-@media (min-width: 769px) {
+@media (min-width: 1024px) {
   .flow-diagram-panel-title {
     font-size: 22px;
   }

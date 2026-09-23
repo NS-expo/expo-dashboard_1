@@ -65,7 +65,7 @@
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 36px;
+  gap: 14px;
 }
 
 .robot-dashboard__rb-status-block {
@@ -94,6 +94,7 @@
   color: inherit;
   font-size: 0.9rem;
   line-height: 1.2;
+  text-align: center;
 }
 
 .robot-dashboard__overall-flow-label {
@@ -102,10 +103,11 @@
 }
 
 .robot-dashboard__overall-flow strong {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 1.9rem;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  line-height: 1.25;
+  font-size: 1.4rem;
 }
 
 .robot-dashboard__info-card {
@@ -121,7 +123,7 @@
 }
 
 .robot-dashboard__info-card-header {
-  font-size: 1.55rem;
+  font-size: 1.50rem;
   font-weight: 700;
   margin-bottom: 4px;
 }
@@ -131,11 +133,22 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  font-size: 1.65rem;
+  font-size: 1.50rem;
 }
 
 .robot-dashboard__info-row-label {
   opacity: 0.65;
+  flex-shrink: 0;
+}
+
+.robot-dashboard__info-row-value {
+  flex: 1 1 auto;
+  min-width: 0;
+  text-align: center;
+  white-space: normal;
+  word-break: keep-all;
+  overflow-wrap: break-word;
+  line-height: 1.25;
 }
 
 

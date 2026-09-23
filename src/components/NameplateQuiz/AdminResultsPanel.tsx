@@ -136,7 +136,9 @@ export default function AdminResultsPanel({
       })
       CATEGORY_TABS.forEach((cat, ci) => {
         const rate = seriesData[cat]?.[gi]
-        if (!rate) return
+        // 有効回答（わからない・未回答を除く）が0件の日は「0%」ではなく
+        // 「データなし」なので、棒自体を描かない（非表示）。ラベルも出さない。
+        if (!rate || rate.totalAnswered === 0) return
         const h = (rate.correctRate / 100) * plotH
         const x = groupX + ci * (barW + barGap) + barW / 2
         const y = padTop + (plotH - h) // ← バー上端（X方向のみ中央、Yはバーの上）
@@ -175,7 +177,10 @@ export default function AdminResultsPanel({
                       <g key={d.value}>
                         {CATEGORY_TABS.map((cat, ci) => {
                           const rate = seriesData[cat]?.[gi]
-                          const h = rate ? (rate.correctRate / 100) * plotH : 0
+                          // 有効回答が0件（＝わからない・未回答のみ、または回答自体なし）の
+                          // 日は「0%の棒」ではなく「棒を描かない」ことでデータなしを表す。
+                          if (!rate || rate.totalAnswered === 0) return null
+                          const h = (rate.correctRate / 100) * plotH
                           const x = groupX + ci * (barW + barGap)
                           const y = padTop + (plotH - h)
                           return (

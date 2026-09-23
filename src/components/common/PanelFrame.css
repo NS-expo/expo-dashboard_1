@@ -90,7 +90,7 @@
 
 /* ===== モニタ（52インチ等の大画面）向け：見出し文字を拡大 =====
    768px超（モバイル以外）が対象。モバイルは従来サイズのまま維持する */
-@media (min-width: 769px) {
+@media (min-width: 1024px) {
   .panel-frame__index {
     font-size: 22px;
   }

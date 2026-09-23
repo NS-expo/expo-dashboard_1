@@ -1,47 +1,48 @@
 // hooks/usePlcConnectionStatus.ts
 //
-// PLCから常時送られてくる「サイクル開始時刻」を監視し、
-// ・起動直後は必ず非接続（未受信）扱いでスタートする
-// ・値が実際に変化したら、その瞬間に即座に「接続中」へ切り替える
-// ・値が一定時間（既定3分）変化しなければ「非接続」に戻す
-
+// PLC接続状況の判定。
+//
+// 判定基準：取付・取出それぞれのベストサイクルタイム
+// （usePlcCycleSignals().tightenBestCycleTimeSec / loosenBestCycleTimeSec。
+//  D15052/15054・D15056/15058、PLC側で保持している値）。
+// ・どちらか一方でも値が入っている（0より大きい）→ 接続中とみなす（即座に反映）
+// ・両方とも0 → すぐには非接続と判定せず、一定時間（DISCONNECT_DELAY_MS）その
+//   状態が続いた場合にのみ非接続とみなす。起動直後やPLC応答待ちの一瞬だけ
+//   0になったケースでアイコンがチラつかないようにするための猶予。
 import { useEffect, useRef, useState } from 'react'
 
-const DEFAULT_DISCONNECT_THRESHOLD_MS = 3 * 60 * 1000 // 3分
-const CHECK_INTERVAL_MS = 1000 // 経過時間の再チェック間隔
+/** 両方0の状態がこの時間続いたら非接続と判定する（ms） */
+const DISCONNECT_DELAY_MS = 180000
 
 export function usePlcConnectionStatus(
-  cycleStartTimeRaw: number | string | undefined,
-  thresholdMs: number = DEFAULT_DISCONNECT_THRESHOLD_MS
+  tightenBestCycleTimeSec: number | undefined,
+  loosenBestCycleTimeSec: number | undefined,
 ): boolean {
-  const [isConnected, setIsConnected] = useState(false) // ← 初期は非接続スタート
-  const lastValueRef = useRef<typeof cycleStartTimeRaw>(undefined)
-  // 値を一度も受け取っていない間はnull。受け取った瞬間に時刻を記録する
-  const lastChangedAtRef = useRef<number | null>(null)
+  const hasValue = (tightenBestCycleTimeSec ?? 0) > 0 || (loosenBestCycleTimeSec ?? 0) > 0
 
-  // 値が実際に変化した瞬間だけ「最終更新時刻」を更新し、即座に接続中にする
-  useEffect(() => {
-    if (cycleStartTimeRaw === undefined) return
-    if (lastValueRef.current !== cycleStartTimeRaw) {
-      lastValueRef.current = cycleStartTimeRaw
-      lastChangedAtRef.current = Date.now()
-      setIsConnected(true) // ← タイマー内に接続が来ればここで即座に切り替わる
-    }
-  }, [cycleStartTimeRaw])
+  const [isConnected, setIsConnected] = useState(hasValue)
+  const timerRef = useRef<number | undefined>(undefined)
 
-  // データが止まっている間も経過時間を見張るため、ポーリングとは別に
-  // 一定間隔で「最後の変化からどれだけ経ったか」を判定する
   useEffect(() => {
-    const timer = window.setInterval(() => {
-      if (lastChangedAtRef.current === null) {
-        // まだ一度も値を受信していない＝非接続のまま
-        setIsConnected(false)
-        return
+    if (hasValue) {
+      // 値が入った時点で即座に「接続」とみなす
+      if (timerRef.current !== undefined) {
+        window.clearTimeout(timerRef.current)
+        timerRef.current = undefined
       }
-      setIsConnected(Date.now() - lastChangedAtRef.current < thresholdMs)
-    }, CHECK_INTERVAL_MS)
-    return () => window.clearInterval(timer)
-  }, [thresholdMs])
+      setIsConnected(true)
+      return
+    }
+
+    // 両方0：一定時間後に「非接続」と判定する（猶予中にtrueへ戻ればタイマーは破棄される）
+    timerRef.current = window.setTimeout(() => {
+      setIsConnected(false)
+    }, DISCONNECT_DELAY_MS)
+
+    return () => {
+      if (timerRef.current !== undefined) window.clearTimeout(timerRef.current)
+    }
+  }, [hasValue])
 
   return isConnected
 }

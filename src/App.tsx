@@ -15,6 +15,7 @@ import { usePlcRobotStatusSignals } from './hooks/usePlcRobotStatusSignals'
 import { usePlcOperationMetricsSignals } from './hooks/usePlcOperationMetricsSignals'
 import { useOperationHourlyTrend } from './hooks/useOperationHourlyTrend'
 import { usePlcJobFlowSignals, JOB_FLOW_ADDRESSES } from './hooks/usePlcJobFlowSignals'
+import { usePlcRbFlowSignals, RB_FLOW_ADDRESSES } from './hooks/usePlcRbFlowSignals'
 import { usePlcCycleSignals } from './hooks/usePlcCycleSignals'
 import { OPERATION_METRICS_ADDRESSES } from './config/operationMetricsAddresses'
 import { CYCLE_ADDRESSES } from './config/cycleAddresses'
@@ -24,8 +25,6 @@ import PlcConnectionIcon from './components/common/PlcConnectionIcon'
 import { usePlcConnectionStatus } from './hooks/usePlcConnectionStatus'
 import { usePlcRunStatusSignals, RUN_STATUS_ADDRESSES } from './hooks/usePlcRunStatusSignals'
 
-// 稼働状況（anomalyページ）用のサンプルデータ
-// RB1・RB2は同一機種のため、画像は1枚を共通で使用する
 const SHARED_ROBOT_IMAGE_URL = '/NS-Q3.png'
 
 // 速度はPLC対象外のためサンプル値のまま。トルク・ピーク値・稼働率はPLC(Dレジスタ、未定)から取得予定で、
@@ -121,7 +120,7 @@ function getInitialPage(): PageKey {
 }
 
 // アイドル検知：この時間ユーザー操作が無ければPLC接続を切る（Netlify無料枠の閲覧数上限対策）
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000 // 30分
+const IDLE_TIMEOUT_MS = 10 * 60 * 1000 // 30分
 
 export default function App() {
   const isTouchDevice = !window.matchMedia('(hover: hover)').matches
@@ -139,7 +138,7 @@ export default function App() {
   const headerRef = useRef<HTMLElement>(null)
   const mode = getThemeMode(themeKey)
   const isMobile = useIsMobile()
-  const [, setDashboardStatus] = useState<CameraStatus>('停止')
+  const [dashboardStatus, setDashboardStatus] = useState<CameraStatus>('停止')
 
   const STATUS_DOT_COLOR: Record<CameraStatus, string> = {
     '運転': '#4ade80',
@@ -197,12 +196,14 @@ export default function App() {
       ...ALL_ROBOT_STATUS_ADDRESSES,
       ...OPERATION_METRICS_ADDRESSES,
       ...JOB_FLOW_ADDRESSES,
+      ...RB_FLOW_ADDRESSES,
       ...CYCLE_ADDRESSES,
       ...RUN_STATUS_ADDRESSES,
     ],
   })
 
   const { activeStep } = usePlcJobFlowSignals(plcData)
+  const { rb1Step, rb2Step } = usePlcRbFlowSignals(plcData)
   const {
     uptimeTotalSec,
     tightenCycleTimeSec,
@@ -211,12 +212,14 @@ export default function App() {
     loosenBestCycleTimeSec,
     cycleHistory,
   } = usePlcCycleSignals(plcData)
-  const { status: runStatus } = usePlcRunStatusSignals(plcData)
+  const { rb1Status, rb2Status } = usePlcRunStatusSignals(plcData)
 
-// D15018はRB1・RB2共通の1つの値なので、両カメラIDに同じ値を適用する
-const plcStatusById = runStatus
-  ? { 'cam-1': runStatus, 'cam-2': runStatus }
-  : undefined
+  // RB1・RB2それぞれの稼働状況を各カメラIDに適用する
+  // （RB1はアドレス未確定のため、確定するまではundefined＝RobotArmDashboard側で「停止」扱い）
+  const plcStatusById =
+    rb1Status !== undefined || rb2Status !== undefined
+      ? { 'cam-1': rb1Status ?? '停止', 'cam-2': rb2Status ?? '停止' }
+      : undefined
 
   // RB1・RB2のトルク値・ピーク値・稼働率（PLC Dレジスタは未定のため現状は常に0が返る想定。
   // 確定するまではサンプル値をフォールバックとして使用する）
@@ -254,14 +257,16 @@ const plcStatusById = runStatus
   // NG判定アドレスは仮値のため、全体フロー表示では使用しない。
   void plcNgSignal
 
-  // 現在はD15000の工程値の変化をPLC応答の目安として監視する
-  const isPlcConnected = usePlcConnectionStatus(activeStep)
+  // 取付・取出のベストサイクルタイム（PLC側で保持している値）を接続判定の目安として監視する。
+  // どちらか一方でも値が入っていれば接続中、両方0の状態が一定時間続けば非接続とみなす。
+  const isPlcConnected = usePlcConnectionStatus(tightenBestCycleTimeSec, loosenBestCycleTimeSec)
 
   const hourlyTrendPoints = useOperationHourlyTrend(anomalyCount, tightenCount, loosenCount)
 
   // ヘッダー右側の運転状況表示：接続アイコン＋色付きドットのみ（ラベル文字は廃止）
-  // PLC値が未受信、またはD15018=0（状態マップ外）の場合は停止とみなす。
-  const headerStatus: CameraStatus = runStatus ?? '停止'
+  // ●は1つだけなので、RB1・RB2の状態をRobotArmDashboard側の優先度
+  // （異常 > 運転 > 待機 > 停止。両方停止のときだけ「停止」）でまとめたdashboardStatusを使う。
+  const headerStatus: CameraStatus = dashboardStatus
   const statusDot = (
     <span className="app-header__status-wrap">
       <PlcConnectionIcon connected={isPlcConnected} />
@@ -271,7 +276,7 @@ const plcStatusById = runStatus
           backgroundColor: STATUS_DOT_COLOR[headerStatus],
           color: STATUS_DOT_COLOR[headerStatus],
         }}
-        title={`運転状況：${headerStatus}`}
+        title={`運転状況：${headerStatus}（RB1：${rb1Status ?? '停止'}／RB2：${rb2Status ?? '停止'}）`}
       />
     </span>
   )
@@ -518,7 +523,7 @@ const plcStatusById = runStatus
               color: theme.subtext,
             }}
           >
-            30分間操作がなかったため接続を終了しました。再接続するにはQRコードから開き直してください
+            10分間操作がなかったため接続を終了しました。再接続するにはQRコードから開き直してください
           </div>
         )}
 
@@ -548,6 +553,8 @@ const plcStatusById = runStatus
             onEditingChange={setIsEditing}
             plcStatusById={plcStatusById} 
             onStatusChange={setDashboardStatus}
+            rb1Step={rb1Step}
+            rb2Step={rb2Step}
             activeStep={activeStep}
             ngSignal={overallNgSignal}
           />
@@ -576,7 +583,6 @@ const plcStatusById = runStatus
           <OperationStatus
             theme={theme}
             themeMode={mode}
-            imageUrl={SHARED_ROBOT_IMAGE_URL}
             robotRB1={robotRB1}
             robotRB2={robotRB2}
             cycleTime={cycleTime}
