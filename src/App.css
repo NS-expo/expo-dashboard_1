@@ -4,6 +4,26 @@
    theme に追従させるため、ここでは構造のみを定義する）
    ============================================= */
 /* --- App ヘッダー --- */
+.app-shell {
+  animation: app-background-drift 28s ease-in-out infinite alternate;
+}
+
+@keyframes app-background-drift {
+  from {
+    background-position: 0% 0%;
+  }
+
+  to {
+    background-position: 100% 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-shell {
+    animation: none;
+  }
+}
+
 .app-header {
   width: 100%;
   display: flex;

@@ -122,7 +122,8 @@ function getInitialPage(): PageKey {
 }
 
 // アイドル検知：この時間ユーザー操作が無ければPLC接続を切る（Netlify無料枠の閲覧数上限対策）
-const IDLE_TIMEOUT_MS = 10 * 60 * 1000 // 30分
+const IDLE_TIMEOUT_MS = 10 * 60 * 1000
+const MAX_BROWSER_COUNT = 30
 
 export default function App() {
   const isTouchDevice = !window.matchMedia('(hover: hover)').matches
@@ -218,7 +219,7 @@ export default function App() {
   const recentDates = getRecentDates(METRIC_DAYS)
   const DATES = recentDates.map((d) => d.label) //['MM/DD', 'MM/DD', 'MM/DD']
   
-  const { data: plcData } = usePlcWebSocket({
+  const { data: plcData, browserCount } = usePlcWebSocket({
     enabled: !isIdle, // モバイル版のみ、30分間操作が無ければ接続を切る（モニタ版はisIdleが常にfalseなので影響しない）
     isPlaying: true,
     intervalSec: 0.5,
@@ -415,11 +416,15 @@ export default function App() {
 
   return (
     <div
+      className="app-shell"
       style={{
         display: 'flex',
         flexDirection: 'column',
         minHeight: 'calc(var(--app-vh, 1vh) * 100)',
         background: theme.bg,
+        backgroundImage:
+          'radial-gradient(circle at 18% 20%, rgba(96, 165, 250, 0.10), transparent 34%), radial-gradient(circle at 82% 78%, rgba(52, 211, 153, 0.07), transparent 32%)',
+        backgroundSize: '180% 180%',
         color: theme.text,
         transition: 'background-color 0.3s, color 0.3s',
       }}
@@ -544,7 +549,7 @@ export default function App() {
           footerHeight={30}
         />
 
-        {/* アイドル状態の通知（30分操作が無く接続を切っている間だけ表示） */}
+        {/* アイドル状態の通知（10分操作が無く接続を切っている間だけ表示） */}
         {isIdle && (
           <div
             className="app-idle-banner"
@@ -578,17 +583,27 @@ export default function App() {
 
         {/* ページコンテンツ（4項目）*/}
         <div className="dashboard-page" style={{ display: currentPage === 'dashboard' ? 'flex' : 'none' }}>
-          <RobotArmDashboard
-            theme={theme}
-            isEditing={isEditing}
-            onEditingChange={setIsEditing}
-            plcStatusById={plcStatusById} 
-            onStatusChange={setDashboardStatus}
-            rb1Step={rb1Step}
-            rb2Step={rb2Step}
-            activeStep={activeStep}
-            ngSignal={overallNgSignal}
-          />
+          {browserCount !== null && browserCount >= MAX_BROWSER_COUNT ? (
+            <div className="app-idle-banner" style={{
+              background: theme.surface,
+              border: `1px solid ${theme.border}`,
+              color: theme.subtext,
+            }}>
+              現在の接続数が上限（{MAX_BROWSER_COUNT}アカウント）に達しているため、ダッシュボードを表示できません。
+            </div>
+          ) : (
+            <RobotArmDashboard
+              theme={theme}
+              isEditing={isEditing}
+              onEditingChange={setIsEditing}
+              plcStatusById={plcStatusById}
+              onStatusChange={setDashboardStatus}
+              rb1Step={rb1Step}
+              rb2Step={rb2Step}
+              activeStep={activeStep}
+              ngSignal={overallNgSignal}
+            />
+          )}
         </div>
 
         <div className="dashboard-page" style={{ display: currentPage === 'control' ? 'flex' : 'none' }}>

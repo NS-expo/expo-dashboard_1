@@ -57,12 +57,19 @@ export interface CycleHistoryState {
   noByStartTime: Map<number, number>
   /** No. → そのサイクルタイム（秒）。前回差分の算出に使う */
   cycleTimeByNo: Map<number, number>
+  /** No. → 整形済み履歴。PLCの5スロットが上書きされても履歴を保持する */
+  recordByNo: Map<number, CycleRecord>
   /** 次に新規レコードへ割り振るNo. */
   nextNo: number
 }
 
 export function createCycleHistoryState(): CycleHistoryState {
-  return { noByStartTime: new Map(), cycleTimeByNo: new Map(), nextNo: 1 }
+  return {
+    noByStartTime: new Map(),
+    cycleTimeByNo: new Map(),
+    recordByNo: new Map(),
+    nextNo: 1,
+  }
 }
 
 function pad2(n: number) {
@@ -110,13 +117,15 @@ export function buildCycleHistory(
     const prevCycleTimeSec = state.cycleTimeByNo.get(no - 1)
     const diffFromPrevSec = prevCycleTimeSec !== undefined ? cycleTimeSec - prevCycleTimeSec : null
 
-    records.push({
+    const record: CycleRecord = {
       no,
       startTime: formatClock(startDate),
       endTime: formatClock(endDate),
       cycleTimeSec,
       diffFromPrevSec,
-    })
+    }
+    state.recordByNo.set(no, record)
+    records.push(record)
   })
 
   // 古いNo.のエントリはもう参照されないので、メモリが無限に増えないよう間引く
@@ -128,7 +137,13 @@ export function buildCycleHistory(
     for (const [key, no] of state.noByStartTime) {
       if (no < cutoff) state.noByStartTime.delete(key)
     }
+    for (const no of state.recordByNo.keys()) {
+      if (no < cutoff) state.recordByNo.delete(no)
+    }
   }
 
-  return records
+  // PLCは5スロットを循環利用するため、現在のスナップショットだけを返すと
+  // D15014/D15016へ戻った6件目以降が表示対象から消える。保持済み履歴を返し、
+  // 表示側で最新5件に絞り込む。
+  return Array.from(state.recordByNo.values()).sort((a, b) => a.no - b.no)
 }

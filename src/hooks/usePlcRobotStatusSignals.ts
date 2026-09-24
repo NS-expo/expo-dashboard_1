@@ -13,10 +13,14 @@ import type { DataPoint } from '../types'
 
 import { getLatestDataPoint, readAddress } from '../utils/usePlcSignalUtils'
 
-import { ROBOT_AXIS_ADDRESSES, type RobotKey } from '../config/robotStatusAddresses'
+import {
+  ROBOT_AXIS_ADDRESSES,
+  ROBOT_SPEED_DISPLAY_MAX_DEG_PER_SEC,
+  type RobotKey,
+} from '../config/robotStatusAddresses'
 
 export interface AxisFullStat {
-  /** MAX比(%)。speedCurrent / speedMax * 100 で算出 */
+  /** 720 deg/sを100%とした速度比 */
   speed: number
   torque: number
   peakTorque: number
@@ -27,11 +31,10 @@ export interface PlcRobotStatusSignals {
   rb2AxisStats: AxisFullStat[]
 }
 
-/** speedMaxが0（未取得等）の場合は0%として扱う。
+/** 720 deg/sを100%として速度を換算する。
  * 表示側（SpeedBar等）が整数前提のため、ここで四捨五入して整数化する。 */
-function toSpeedPercent(current: number, max: number): number {
-  if (!max) return 0
-  return Math.round((current / max) * 100)
+function toSpeedPercent(current: number): number {
+  return Math.round((current / ROBOT_SPEED_DISPLAY_MAX_DEG_PER_SEC) * 100)
 }
 
 export function usePlcRobotStatusSignals(
@@ -43,10 +46,8 @@ export function usePlcRobotStatusSignals(
     const buildAxisStats = (robot: RobotKey): AxisFullStat[] =>
       ROBOT_AXIS_ADDRESSES[robot].map((addr) => {
         const speedCurrent = readAddress(latest, addr.speedCurrent)
-        const speedMax = readAddress(latest, addr.speedMax)
-
         return {
-          speed: toSpeedPercent(speedCurrent, speedMax),
+          speed: toSpeedPercent(speedCurrent),
           torque: readAddress(latest, addr.torque),
           peakTorque: readAddress(latest, addr.peakTorque),
         }

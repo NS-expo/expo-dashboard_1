@@ -47,6 +47,8 @@ const OVERALL_DECISION_STEP = OVERALL_FLOW.find((n) => n.id === 'ov-d')!.plcStep
 /** 「刃物交換」工程のPLCステップ番号（7）。刃物交換は基本NG時にしか発生しないため、
  *  この工程の間はNG判定信号が瞬間値のまま消えてもNG表示を維持する（下のラッチ処理で使用）。 */
 const BLADE_EXCHANGE_STEP = OVERALL_FLOW.find((n) => n.id === 'ov-5')!.plcStep!
+/** 「刃物ストックへ返却」工程のPLCステップ番号（8）。返却中はNG表示を解除する。 */
+const BLADE_RETURN_STEP = OVERALL_FLOW.find((n) => n.id === 'ov-6')!.plcStep!
 
 /**
  * NG判定信号（ngSignal）はPLCが判定確定の瞬間だけ送る値のため、「検査結果OK？」の
@@ -55,8 +57,8 @@ const BLADE_EXCHANGE_STEP = OVERALL_FLOW.find((n) => n.id === 'ov-5')!.plcStep!
  * この間はOK側の色・表示になってしまうのは誤りで、NGを維持すべき。
  *
  * そこで、ngSignalがtrueになった時点でラッチし、刃物交換工程（BLADE_EXCHANGE_STEP）を
- * 抜けて次の工程に進んだタイミングでラッチを解除する。分岐に到達する前は生のngSignalを
- * そのまま返す（OK判定側はラッチ不要のため、ラッチ解除後は再び生の値に追従する）。
+ * 抜けて次の工程に進んだタイミングでラッチを解除する。刃物ストックへ返却する工程以降は
+ * NG表示を解除し、分岐に到達する前は生のngSignalをそのまま返す。
  */
 export function useLatchedNgSignal(activeStep: number | undefined, ngSignal: boolean | undefined): boolean | undefined {
   const [latched, setLatched] = useState(false)
@@ -74,6 +76,7 @@ export function useLatchedNgSignal(activeStep: number | undefined, ngSignal: boo
   }, [activeStep, ngSignal])
 
   if (activeStep === undefined || activeStep < OVERALL_DECISION_STEP) return ngSignal
+  if (activeStep >= BLADE_RETURN_STEP) return undefined
   return latched || ngSignal
 }
 

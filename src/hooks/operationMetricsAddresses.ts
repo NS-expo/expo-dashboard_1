@@ -14,8 +14,8 @@
 
 /** 検査回数（D15180） */
 export const INSPECT_COUNT_ADDRESS = 15180
-/** 異常回数（D15181） */
-export const ANOMALY_COUNT_ADDRESS = 15181
+/** 異常回数（D15182） */
+export const ANOMALY_COUNT_ADDRESS = 15182
 /** 上刃挿入回数（アドレス未定のため仮番号） */
 export const INSERT_COUNT_ADDRESS = 202
 /** 取付実行回数（D15186） */

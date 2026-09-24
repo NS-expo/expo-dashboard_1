@@ -76,6 +76,39 @@ function writeSessionId(id: string) {
 
 } 
 
+function dateFromTimestamp(value: unknown): string | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return undefined
+  const timestamp = value > 1e12 ? value : value * 1000
+  const date = new Date(timestamp)
+  if (Number.isNaN(date.getTime())) return undefined
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+}
+
+function normalizeAnswerLog(value: unknown): QuizAnswerLog | null {
+  if (typeof value !== 'object' || value === null) return null
+  const raw = value as Record<string, unknown>
+  if (
+    typeof raw.questionId !== 'string' ||
+    typeof raw.choiceIndex !== 'number' ||
+    typeof raw.correct !== 'boolean' ||
+    typeof raw.timestamp !== 'number'
+  ) return null
+
+  const date =
+    typeof raw.date === 'string' && raw.date.length >= 10
+      ? raw.date.slice(0, 10)
+      : dateFromTimestamp(raw.timestamp)
+  if (!date) return null
+
+  return {
+    questionId: raw.questionId,
+    date,
+    choiceIndex: raw.choiceIndex,
+    correct: raw.correct,
+    timestamp: raw.timestamp,
+  }
+}
+
  
 
 export const apiAnswerLogStore: AnswerLogStore = { 
@@ -92,7 +125,8 @@ export const apiAnswerLogStore: AnswerLogStore = {
 
         sessionId: readSessionId(), 
 
-        questionId: log.questionId, 
+        questionId: log.questionId,
+        date: log.date,
 
         choiceIndex: log.choiceIndex, 
 
@@ -120,7 +154,13 @@ export const apiAnswerLogStore: AnswerLogStore = {
 
     if (!res.ok) return [] 
 
-    return res.json() 
+    const payload = (await res.json()) as unknown
+    const rawLogs = Array.isArray(payload)
+      ? payload
+      : typeof payload === 'object' && payload !== null && Array.isArray((payload as { answers?: unknown }).answers)
+        ? (payload as { answers: unknown[] }).answers
+        : []
+    return rawLogs.map(normalizeAnswerLog).filter((log): log is QuizAnswerLog => log !== null)
 
   }, 
 

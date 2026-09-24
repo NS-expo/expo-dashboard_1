@@ -67,26 +67,23 @@ function endBase(slot: 1 | 2 | 3 | 4 | 5) {
   return 15250 + (slot - 1) * 10
 }
 
-// サイクルタイム記憶n（分・秒）は、他の項目のように等間隔ではなく資料に
-// 個別に記載された番地のため、規則計算せずそのまま定義する。
-const CYCLE_TIME_MIN_ADDRESS_BY_SLOT: Record<1 | 2 | 3 | 4 | 5, number> = {
-  1: 15014,
-  2: 15072,
-  3: 15076,
-  4: 15092,
-  5: 15096,
-}
-const CYCLE_TIME_SEC_ADDRESS_BY_SLOT: Record<1 | 2 | 3 | 4 | 5, number> = {
-  1: 15016,
-  2: 15074,
-  3: 15078,
-  4: 15094,
-  5: 15098,
+// サイクルタイム記憶n（分・秒）は、5件を使い切ると記憶1へ戻る循環配置。
+// 6件目以降は 1→2→3→4→5→1… の順で同じアドレスを再利用する。
+const CYCLE_TIME_MIN_ADDRESSES = [15014, 15072, 15076, 15092, 15096] as const
+const CYCLE_TIME_SEC_ADDRESSES = [15016, 15074, 15078, 15094, 15098] as const
+
+export function getCycleTimeAddresses(historyNo: number) {
+  const index = (Math.max(1, historyNo) - 1) % CYCLE_TIME_MIN_ADDRESSES.length
+  return {
+    cycleTimeMin: CYCLE_TIME_MIN_ADDRESSES[index],
+    cycleTimeSec: CYCLE_TIME_SEC_ADDRESSES[index],
+  }
 }
 
 export const CYCLE_HISTORY_SLOTS: CycleHistorySlotAddresses[] = ([1, 2, 3, 4, 5] as const).map((slot) => {
   const sBase = startBase(slot)
   const eBase = endBase(slot)
+  const cycleTimeAddresses = getCycleTimeAddresses(slot)
   return {
     slot,
     startYear: sBase,
@@ -99,8 +96,8 @@ export const CYCLE_HISTORY_SLOTS: CycleHistorySlotAddresses[] = ([1, 2, 3, 4, 5]
     endDay: eBase + 4,
     endHour: eBase + 6,
     endMinute: eBase + 8, // ← 推定値（上記コメント参照）
-    cycleTimeMin: CYCLE_TIME_MIN_ADDRESS_BY_SLOT[slot],
-    cycleTimeSec: CYCLE_TIME_SEC_ADDRESS_BY_SLOT[slot],
+    cycleTimeMin: cycleTimeAddresses.cycleTimeMin,
+    cycleTimeSec: cycleTimeAddresses.cycleTimeSec,
   }
 })
 
