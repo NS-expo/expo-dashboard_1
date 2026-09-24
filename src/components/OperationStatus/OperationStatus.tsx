@@ -58,14 +58,14 @@ interface ConnectorLine {
 }
 
 // モバイル・タブレット共通の「コンパクト表示」の境界幅（px）。
-// OperationStatus.css の @media (max-width: 1376px) と必ず同じ値にすること。
+// OperationStatus.css のメディアクエリと必ず同じ条件にすること。
 const COMPACT_MAX_WIDTH = 1376
 
 // 画面幅がCOMPACT_MAX_WIDTH以下（モバイル・タブレット）かどうかを返す。
 // 平均トルクバー・ロボット模式図・接続線はモニタ幅専用のため、CSSの display:none に
 // 頼らず、コンパクト表示ではそもそも描画しない（CSSの適用順に左右されないようにする）。
 function useIsCompact() {
-  const query = `(max-width: ${COMPACT_MAX_WIDTH}px)`
+  const query = `(max-width: ${COMPACT_MAX_WIDTH}px) and (hover: none) and (pointer: coarse)`
   const [isCompact, setIsCompact] = useState(
     () => typeof window !== 'undefined' && window.matchMedia(query).matches,
   )

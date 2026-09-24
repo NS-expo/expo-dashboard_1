@@ -1143,7 +1143,7 @@
 }
 
 /* ===== モバイル・タブレット共通：グラフ／ゲージ→表に切替、縦スクロール許可 ===== */
-@media (max-width: 1376px) {
+@media (max-width: 1376px) and (hover: none) and (pointer: coarse) {
 
   .axis-monitor {
     height: auto;

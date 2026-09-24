@@ -18,5 +18,5 @@ export function useMediaQuery(query: string): boolean {
 
 /** スマホ・タブレット（1376px以下） */
 export function useIsMobile(): boolean {
-  return useMediaQuery('(max-width: 1376px)')
+  return useMediaQuery('(max-width: 1376px) and (hover: none) and (pointer: coarse)')
 }
