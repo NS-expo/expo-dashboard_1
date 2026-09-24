@@ -1,6 +1,7 @@
 // AdminResultsPanel.tsx
 import { useEffect, useMemo, useState } from 'react'
-import type { NameplateQuestion, Theme, ThemeMode, ChoiceBreakdown, DailyCorrectRate } from '../../types'
+import type { NameplateQuestion, Theme, ThemeMode, ChoiceBreakdown, DailyCorrectRate, QuizAnswerLog } from '../../types'
+import { UNKNOWN_CHOICE_INDEX, TIMEOUT_CHOICE_INDEX } from '../../types'
 import './AdminResultsPanel.css'
 import { createPortal } from 'react-dom'
 
@@ -11,8 +12,21 @@ interface AdminResultsPanelProps {
   dateOptions: { label: string; value: string }[]
   getBreakdown: (question: NameplateQuestion, dateRange?: string[]) => Promise<ChoiceBreakdown[]>
   getDailyCorrectRates: (dates: string[], questionIds?: string[]) => Promise<DailyCorrectRate[]>
+  // 複数カテゴリぶんの日別正解率をまとめて1回で取得する版。
+  // embedded表示（モニタ常時表示のグラフ）は5カテゴリを毎回個別にfetchしていたのが
+  // 重かったため、こちらを使って1回の呼び出しに集約する。
+  getDailyCorrectRatesByCategory: (
+    dates: string[],
+    categoryQuestionIds: Record<string, string[] | undefined>
+  ) => Promise<Record<string, DailyCorrectRate[]>>
   onClose?: () => void
   password?: string
+  /**
+   * デバッグ用：一切加工しない生ログをそのまま取得する（useQuizAnswerLog の
+   * debugGetAllLogs）。作成者ページ（embedded=false）でのみ使用。渡さなければ
+   * デバッグ表示自体を出さない。
+   */
+  debugGetAllLogs?: () => Promise<QuizAnswerLog[]>
   /**
    * true: モニタに常時埋め込む「公開用」表示。パスワード不要・答えは一切見せない
    *       （カテゴリ別の日別正解率をまとめた棒グラフのみ）。
@@ -36,9 +50,9 @@ const CATEGORY_COLORS: Record<CategoryTab, string> = {
 }
 
 // モニタ表示は常時開きっぱなしのため、定期的に再取得して反映する。
-// 今はlocalStorageなので実質同一端末内の変化しか拾えないが、DB接続後は
-// 他端末（スマホ）で増えた回答もここで自動的に反映されるようになる。
-const EMBEDDED_POLL_INTERVAL_MS = 20000
+// getDailyCorrectRatesByCategory によりAPI呼び出しは1サイクルにつき1回になっている。
+// 20秒だとAPIへの問い合わせ頻度が高すぎるため、3分に延長。
+const EMBEDDED_POLL_INTERVAL_MS = 3 * 60 * 1000
 
 export default function AdminResultsPanel({
   theme,
@@ -47,9 +61,11 @@ export default function AdminResultsPanel({
   dateOptions,
   getBreakdown,
   getDailyCorrectRates,
+  getDailyCorrectRatesByCategory,
   onClose,
   password = 'nishi2460',
   embedded = false,
+  debugGetAllLogs,
 }: AdminResultsPanelProps) {
   const themeVars = {
     '--nq-bg': theme.bg,
@@ -79,24 +95,19 @@ export default function AdminResultsPanel({
     }, [questions])
 
     const [seriesData, setSeriesData] = useState<Record<CategoryTab, DailyCorrectRate[]>>(
-      () =>
-        Object.fromEntries(CATEGORY_TABS.map((c) => [c, [] as DailyCorrectRate[]])) as Record<
-          CategoryTab,
-          DailyCorrectRate[]
-        >
-    )
-
+  () =>
+    Object.fromEntries(
+      CATEGORY_TABS.map((c) => [c, [] as DailyCorrectRate[]])
+    ) as Record<CategoryTab, DailyCorrectRate[]>
+)
     useEffect(() => {
       let cancelled = false
       const refresh = async () => {
-        const entries = await Promise.all(
-          CATEGORY_TABS.map(async (cat) => {
-            const rates = await getDailyCorrectRates(dates, questionIdsByCategory[cat])
-            return [cat, rates] as const
-          })
-        )
+        // 5カテゴリぶんまとめて1回のstore.getAll()で計算する
+        // （NameplateQuiz.tsx → useQuizAnswerLog.ts 側で1回のfetchに集約済み）
+        const result = await getDailyCorrectRatesByCategory(dates, questionIdsByCategory)
         if (!cancelled) {
-          setSeriesData(Object.fromEntries(entries) as Record<CategoryTab, DailyCorrectRate[]>)
+          setSeriesData(result as Record<CategoryTab, DailyCorrectRate[]>)
         }
       }
       refresh()
@@ -105,7 +116,7 @@ export default function AdminResultsPanel({
         cancelled = true
         clearInterval(interval)
       }
-    }, [dates, questionIdsByCategory, getDailyCorrectRates])
+    }, [dates, questionIdsByCategory, getDailyCorrectRatesByCategory])
 
     const chartW = 1200         // 640 → 1200：3日分でも間隔にゆとりが出る横幅に拡大
     const chartH = 260
@@ -291,6 +302,53 @@ export default function AdminResultsPanel({
     }
   }, [dateOptions, getDailyCorrectRates])
 
+  // ── デバッグ表示：生ログをそのまま取得して件数・日付内訳を見せる ──────
+  // 「◯回答したのに集計が△件」のような食い違いを調べるためのもの。
+  // ①APIが本当に全件返しているか、②ログのdate文字列が画面のdateOptionsと
+  // ズレていないか（タイムゾーン差など）、③わからない／未回答が思ったより
+  // 多くないか、をここでまとめて確認できるようにする。
+  const [debugOpen, setDebugOpen] = useState(false)
+  const [debugLoading, setDebugLoading] = useState(false)
+  const [debugLogs, setDebugLogs] = useState<QuizAnswerLog[] | null>(null)
+
+  const runDebugFetch = () => {
+    if (!debugGetAllLogs) return
+    setDebugLoading(true)
+    debugGetAllLogs()
+      .then((logs) => setDebugLogs(logs))
+      .finally(() => setDebugLoading(false))
+  }
+
+  const debugSummary = useMemo(() => {
+    if (!debugLogs) return null
+    const knownDates = new Set(dateOptions.map((d) => d.value))
+    const byDate: { date: string; count: number; known: boolean }[] = []
+    const byDateMap = new Map<string, number>()
+    let unknownCount = 0
+    let timeoutCount = 0
+    let correctCount = 0
+    let incorrectCount = 0
+    debugLogs.forEach((l) => {
+      byDateMap.set(l.date, (byDateMap.get(l.date) ?? 0) + 1)
+      if (l.choiceIndex === UNKNOWN_CHOICE_INDEX) unknownCount++
+      else if (l.choiceIndex === TIMEOUT_CHOICE_INDEX) timeoutCount++
+      else if (l.correct) correctCount++
+      else incorrectCount++
+    })
+    byDateMap.forEach((count, date) => byDate.push({ date, count, known: knownDates.has(date) }))
+    byDate.sort((a, b) => (a.date < b.date ? -1 : 1))
+    return {
+      total: debugLogs.length,
+      answered: correctCount + incorrectCount,
+      correctCount,
+      incorrectCount,
+      unknownCount,
+      timeoutCount,
+      byDate,
+      unmatchedDateCount: byDate.filter((d) => !d.known).length,
+    }
+  }, [debugLogs, dateOptions])
+
   const toggleDate = (value: string) => {
     setSelectedDates((prev) =>
       prev.includes(value) ? prev.filter((d) => d !== value) : [...prev, value]
@@ -431,6 +489,72 @@ export default function AdminResultsPanel({
                 ))}
               </svg>
             </div>
+
+            {debugGetAllLogs && (
+              <div className="admin-panel__debug">
+                <button
+                  className="admin-panel__unlock-btn admin-panel__debug-toggle"
+                  onClick={() => {
+                    const next = !debugOpen
+                    setDebugOpen(next)
+                    if (next) runDebugFetch()
+                  }}
+                >
+                  {debugOpen ? 'デバッグを閉じる' : 'デバッグ：生データを確認'}
+                </button>
+
+                {debugOpen && (
+                  <div className="admin-panel__debug-body">
+                    {debugLoading && <p className="admin-panel__empty">読み込み中…</p>}
+
+                    {!debugLoading && debugSummary && (
+                      <>
+                        <p>
+                          生ログ合計：<strong>{debugSummary.total}件</strong>
+                        </p>
+                        <p>
+                          　うち 正解 {debugSummary.correctCount} ／ 不正解 {debugSummary.incorrectCount} ／
+                          わからない {debugSummary.unknownCount} ／ 未回答(タイムアウト) {debugSummary.timeoutCount}
+                        </p>
+                        <p>
+                          　正答率の分母（わからない・未回答を除く回答数）：{debugSummary.answered}件
+                        </p>
+                        <p className="admin-panel__debug-subtitle">日付別件数：</p>
+                        <ul className="admin-panel__debug-list">
+                          {debugSummary.byDate.map((d) => (
+                            <li key={d.date}>
+                              {d.date}：{d.count}件
+                              {!d.known && (
+                                <span className="admin-panel__pw-error admin-panel__debug-flag">
+                                  {' '}
+                                  ⚠ 現在の日付選択肢（dateOptions）に無い日付
+                                </span>
+                              )}
+                            </li>
+                          ))}
+                        </ul>
+                        {debugSummary.unmatchedDateCount > 0 && (
+                          <p className="admin-panel__pw-error">
+                            ⚠ {debugSummary.unmatchedDateCount}種類の日付がdateOptionsに含まれていません。
+                            これらのログは画面上の集計から漏れます（記録した端末と表示側で日付・タイムゾーンが
+                            ズレている可能性があります）。
+                          </p>
+                        )}
+                        <button className="admin-panel__unlock-btn" onClick={runDebugFetch}>
+                          再取得
+                        </button>
+                      </>
+                    )}
+
+                    {!debugLoading && !debugSummary && (
+                      <button className="admin-panel__unlock-btn" onClick={runDebugFetch}>
+                        生データを取得
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
       </div>

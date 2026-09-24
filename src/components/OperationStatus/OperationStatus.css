@@ -1142,77 +1142,8 @@
   white-space: nowrap;
 }
 
-/* ===== 狭幅対応（タブレット等） ===== */
-
-@media (max-width: 900px) {
-  /* 中央列（トルク見出し／速度キャプションのスペーサー／ロボット模式図）を非表示にし、
-     RB1・RB2の2列だけの構成に折りたたむ。display:noneにした要素はグリッドの
-     自動配置から外れるため、残る2つの子要素がそのまま1・2列目に詰まる */
-  .axis-monitor__grid {
-    grid-template-columns: minmax(72px, 1fr) minmax(72px, 1fr);
-    column-gap: 6px;
-  }
-
-  .axis-monitor__header-rb1 { grid-column: 1; justify-content: flex-start; }
-  .axis-monitor__header-rb2 { grid-column: 2; justify-content: flex-end; }
-  .axis-monitor__rows--rb1 { grid-column: 1; }
-  .axis-monitor__rows--rb2 { grid-column: 2; }
-
-  .robot-diagram,
-  .axis-monitor__connectors {
-    display: none;
-  }
-
-  /* 狭幅では平均速度ゲージを非表示にし、RB1/RB2ラベル箱のみ残す
-    （従来のspeed-gauge-row非表示と同等の挙動） */
-  .axis-monitor__header-rb1 > .speed-gauge,
-  .axis-monitor__header-rb2 > .speed-gauge {
-    display: none;
-  }
-
-  /* 列幅が狭くなるため、拡大したRB1/RB2文字はここで少し戻す（収まりを優先） */
-  .robot-header-badge__title,
-  .robot-header-badge--stacked .robot-header-badge__title,
-  .robot-header-badge--boxed .robot-header-badge__title {
-    font-size: 22px;
-  }
-
-  .robot-header-badge--boxed {
-    padding: 4px 12px;
-  }
-
-  .axis-monitor__topbar {
-    gap: 8px;
-  }
-
-  .axis-monitor__legend {
-    margin-left: 0;
-  }
-
-  .axis-monitor__edit-panel {
-    width: 100%;
-    border: 1px solid var(--border-soft);
-    max-height: 45vh;
-  }
-
-  .axis-monitor__body {
-    flex-direction: column;
-  }
-
-  /* 100px幅の列に収まるよう、拡大した稼働率ドーナツを少し縮める */
-  .utilization-donut--compact .utilization-donut__ring {
-    width: 70px;
-    height: 70px;
-  }
-
-  .utilization-donut--compact .utilization-donut__number {
-    font-size: 20px;
-  }
-}
-
-/* ===== モバイル対応：グラフ／ゲージ→表に切替、縦スクロール許可 ===== */
-
-@media (max-width: 640px) {
+/* ===== モバイル・タブレット共通：グラフ／ゲージ→表に切替、縦スクロール許可 ===== */
+@media (max-width: 1376px) {
 
   .axis-monitor {
     height: auto;
@@ -1220,9 +1151,6 @@
     overflow: visible;
   }
 
-  /* axis-monitor__rows / .robot-diagram を非表示にした際、グリッドの3行目
-     (minmax(0, 1fr)) が空のまま高さを確保してしまい、RB1/RB2ボタンと
-     平均トルクの間に不要な余白ができていたため、この幅では3行目自体をなくす */
   .axis-monitor__grid {
     flex: 0 0 auto;
     grid-template-rows: auto auto;
@@ -1285,14 +1213,21 @@
     display: block;
     flex: 0 0 auto;
     min-height: 0;
-    overflow-x: scroll;
+    overflow-x: auto;      /* タブレットは収まれば不要なのでautoに */
     overflow-y: hidden;
+  }
+}
+
+/* ===== 携帯幅のみ：横スクロール前提の表示 ===== */
+@media (max-width: 640px) {
+
+  .axis-table-scroll {
+    overflow-x: scroll;
     padding-bottom: 14px;
     scrollbar-width: auto;
     scrollbar-color: var(--brass, #d6a85f) var(--panel-raised, #1b222b);
   }
 
-  /* ネイティブのスクロールバーが自動的に消える端末でも、横スクロール可能と分かるようにする */
   .axis-table-scroll::before,
   .axis-table-scroll::after {
     content: '';
@@ -1325,5 +1260,4 @@
     gap: 4px;
     padding-right: 0;
   }
-
 }

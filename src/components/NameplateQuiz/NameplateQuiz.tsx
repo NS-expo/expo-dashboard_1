@@ -1,4 +1,4 @@
-// NameplateQuiz.tsx (インポート部分)
+// NameplateQuiz.tsx
 import { useEffect, useMemo, useState } from 'react'
 import PanelFrame from '../common/PanelFrame'
 import type { NameplateQuestion, ThemeMode, Theme } from '../../types'
@@ -16,7 +16,8 @@ import './NameplateQuiz.css'
 // 今はlocalStorageなので実際には同一端末内でしか意味を持たないが、
 // 将来DB接続に切り替えたときに「スマホの回答が自動でモニタに反映される」
 // ようにするための土台として最初から入れておく。
-const STATS_POLL_INTERVAL_MS = 15000
+// 15秒だとAPIへの問い合わせ頻度が高すぎるため、3分に延長。
+const STATS_POLL_INTERVAL_MS = 3 * 60 * 1000
 
 interface NameplateQuizProps {
   theme: Theme
@@ -50,7 +51,7 @@ function shuffledChoiceOrder(choiceCount: number): number[] {
 export default function NameplateQuiz({
   theme, questions, themeMode, isAdminOpen, onAdminOpenChange, dateOptions,
 }: NameplateQuizProps) {
-  const { logAnswer, getOverallStats, getBreakdown, getDailyCorrectRates } = useQuizAnswerLog()
+  const { logAnswer, getOverallStats, getBreakdown, getDailyCorrectRates, getDailyCorrectRatesByCategory, debugGetAllLogs } = useQuizAnswerLog()
   const { progress, setProgress } = useQuizProgressCache()
   const isMobile = useIsMobile()
   const [overall, setOverall] = useState({ totalAnswered: 0, totalCorrect: 0 })
@@ -428,7 +429,6 @@ useEffect(() => {
         )}
         {!isMobile && (
           // ---- モニタ表示：下段にカテゴリ別・日別正解率のグラフ ----
-          
           <div className="nameplate-quiz__trend">
             <AdminResultsPanel
               theme={theme}
@@ -437,6 +437,7 @@ useEffect(() => {
               dateOptions={dateOptions}
               getBreakdown={getBreakdown}
               getDailyCorrectRates={getDailyCorrectRates}
+              getDailyCorrectRatesByCategory={getDailyCorrectRatesByCategory}
               embedded
             />
           </div>
@@ -451,6 +452,8 @@ useEffect(() => {
          dateOptions={dateOptions}
          getBreakdown={getBreakdown}
          getDailyCorrectRates={getDailyCorrectRates}
+         getDailyCorrectRatesByCategory={getDailyCorrectRatesByCategory}
+         debugGetAllLogs={debugGetAllLogs}
          onClose={() => onAdminOpenChange(false)}
         />
      )}

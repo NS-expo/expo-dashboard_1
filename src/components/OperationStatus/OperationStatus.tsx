@@ -57,6 +57,30 @@ interface ConnectorLine {
   rightPath: string
 }
 
+// モバイル・タブレット共通の「コンパクト表示」の境界幅（px）。
+// OperationStatus.css の @media (max-width: 1376px) と必ず同じ値にすること。
+const COMPACT_MAX_WIDTH = 1376
+
+// 画面幅がCOMPACT_MAX_WIDTH以下（モバイル・タブレット）かどうかを返す。
+// 平均トルクバー・ロボット模式図・接続線はモニタ幅専用のため、CSSの display:none に
+// 頼らず、コンパクト表示ではそもそも描画しない（CSSの適用順に左右されないようにする）。
+function useIsCompact() {
+  const query = `(max-width: ${COMPACT_MAX_WIDTH}px)`
+  const [isCompact, setIsCompact] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(query).matches,
+  )
+
+  useEffect(() => {
+    const mql = window.matchMedia(query)
+    const handleChange = () => setIsCompact(mql.matches)
+    handleChange()
+    mql.addEventListener('change', handleChange)
+    return () => mql.removeEventListener('change', handleChange)
+  }, [query])
+
+  return isCompact
+}
+
 export default function OperationStatus({
   theme,
   themeMode,
@@ -66,6 +90,10 @@ export default function OperationStatus({
   onEditingChange,
 }: OperationStatusProps) {
   const axisCount = 6 // S,L,U,R,B,Tの6軸固定（安川協働ロボット：6軸垂直多関節）
+
+  // モバイル・タブレット（900px以下）は「平均トルクの数値カード＋軸別データ表」のみ表示し、
+  // 平均トルクバー・ロボット模式図・接続線・軸カードは描画しない。
+  const isCompact = useIsCompact()
 
   // RB1/RB2カラーの編集（参考：OperationResults.tsxの色編集パターン）
   const [customColors, setCustomColors] = useState<{ rb1?: string; rb2?: string }>({})
@@ -185,6 +213,8 @@ export default function OperationStatus({
   const [gridSize, setGridSize] = useState({ width: 0, height: 0 })
 
   useLayoutEffect(() => {
+    // コンパクト表示（モバイル・タブレット）では模式図・接続線を描画しないため計算不要
+    if (isCompact) return
     const grid = gridRef.current
     if (!grid) return
     const image = grid.querySelector<HTMLImageElement>('.robot-diagram__img')
@@ -245,7 +275,7 @@ export default function OperationStatus({
       observer.disconnect()
       image.removeEventListener('load', updateConnectorLines)
     }
-  }, [])
+  }, [isCompact])
 
   return (
     <PanelFrame className={`op-status op-status--${theme}`}>
@@ -279,18 +309,22 @@ export default function OperationStatus({
                   onClick={() => handleMobileRBToggle('RB1')}
                   dimmed={selectedMobileRB === 'RB2'}
                 />
-                <AverageSpeedGauge
-                  value={rb1AvgTorque}
-                  maxValue={80}
-                  color={rb1Color}
-                  label="平均トルク"
-                  reverse
-                  iconOnRight
-                />
+                {!isCompact && (
+                  <AverageSpeedGauge
+                    value={rb1AvgTorque}
+                    maxValue={80}
+                    color={rb1Color}
+                    label="平均トルク"
+                    reverse
+                    iconOnRight
+                  />
+                )}
               </div>
 
               <div className="axis-monitor__header-rb2">
-                <AverageSpeedGauge value={rb2AvgTorque} maxValue={80} color={rb2Color} label="平均トルク" />
+                {!isCompact && (
+                  <AverageSpeedGauge value={rb2AvgTorque} maxValue={80} color={rb2Color} label="平均トルク" />
+                )}
                 <RobotHeaderBadge
                   label="RB2"
                   colorKey="RB2"
@@ -311,96 +345,107 @@ export default function OperationStatus({
                  下の接続線（実画像の関節位置IMAGE_JOINT_Y⇄各カードの実際の中心座標）で
                  示す（以前は行の高さ比率(AXIS_ROW_FLEX)で対応させていたが、画像側の
                  実際の関節間隔と一致せずズレていたため、この方式に変更した）。 */}
-              <div className="axis-monitor__rows axis-monitor__rows--rb1">
-                {displayRows.map((row) => (
-                  <AxisRow
-                    key={row.axis}
-                    side="rb1"
-                    data={toSideData(row, 'rb1')}
-                    threshold={THRESHOLD}
-                    isWarning={warningAxes[row.axis - 1] ?? false}
-                    color={rb1Color}
-                    flexGrow={1}
-                  />
-                ))}
-              </div>
+              {/* モニタ幅専用：軸カード（RB1/RB2）・ロボット模式図・接続線。
+                 モバイル・タブレット（900px以下）では描画せず、下の平均トルク数値カードと
+                 軸別データ表のみを表示する。 */}
+              {!isCompact && (
+                <>
+                  <div className="axis-monitor__rows axis-monitor__rows--rb1">
+                    {displayRows.map((row) => (
+                      <AxisRow
+                        key={row.axis}
+                        side="rb1"
+                        data={toSideData(row, 'rb1')}
+                        threshold={THRESHOLD}
+                        isWarning={warningAxes[row.axis - 1] ?? false}
+                        color={rb1Color}
+                        flexGrow={1}
+                      />
+                    ))}
+                  </div>
 
-              <RobotAxisDiagram mode={robotImageMode} warningAxes={warningAxes} />
+                  <RobotAxisDiagram mode={robotImageMode} warningAxes={warningAxes} />
 
-              <div className="axis-monitor__rows axis-monitor__rows--rb2">
-                {displayRows.map((row) => (
-                  <AxisRow
-                    key={row.axis}
-                    side="rb2"
-                    data={toSideData(row, 'rb2')}
-                    threshold={THRESHOLD}
-                    isWarning={warningAxes[row.axis - 1] ?? false}
-                    color={rb2Color}
-                    flexGrow={1}
-                  />
-                ))}
-              </div>
+                  <div className="axis-monitor__rows axis-monitor__rows--rb2">
+                    {displayRows.map((row) => (
+                      <AxisRow
+                        key={row.axis}
+                        side="rb2"
+                        data={toSideData(row, 'rb2')}
+                        threshold={THRESHOLD}
+                        isWarning={warningAxes[row.axis - 1] ?? false}
+                        color={rb2Color}
+                        flexGrow={1}
+                      />
+                    ))}
+                  </div>
 
-              {/* 画像内の実際の関節位置から、左右の対応カード中心へ接続する。 */}
-              <svg
-                className="axis-monitor__connectors"
-                viewBox={`0 0 ${gridSize.width} ${gridSize.height}`}
-                aria-hidden="true"
-              >
-                {connectorLines.map(({ axis, leftPath, rightPath }) => {
-                  const name = axis
-                  const axisIndex = AXIS_NAMES.indexOf(name)
-                  const isWarning = warningAxes[axisIndex] ?? false
-                  return (
-                    <g key={name}>
-                    <path
-                      d={leftPath}
-                      fill="none"
-                      vectorEffect="non-scaling-stroke"
-                      className={`axis-monitor__connector-line${isWarning ? ' axis-monitor__connector-line--warning' : ''}`}
-                      style={isWarning ? undefined : { stroke: rb1Color }}
-                    />
-                    <path
-                      d={rightPath}
-                      fill="none"
-                      vectorEffect="non-scaling-stroke"
-                      className={`axis-monitor__connector-line${isWarning ? ' axis-monitor__connector-line--warning' : ''}`}
-                      style={isWarning ? undefined : { stroke: rb2Color }}
-                    />
-                    </g>
-                  )
-                })}
-              </svg>
+                  {/* 画像内の実際の関節位置から、左右の対応カード中心へ接続する。 */}
+                  <svg
+                    className="axis-monitor__connectors"
+                    viewBox={`0 0 ${gridSize.width} ${gridSize.height}`}
+                    aria-hidden="true"
+                  >
+                    {connectorLines.map(({ axis, leftPath, rightPath }) => {
+                      const name = axis
+                      const axisIndex = AXIS_NAMES.indexOf(name)
+                      const isWarning = warningAxes[axisIndex] ?? false
+                      return (
+                        <g key={name}>
+                        <path
+                          d={leftPath}
+                          fill="none"
+                          vectorEffect="non-scaling-stroke"
+                          className={`axis-monitor__connector-line${isWarning ? ' axis-monitor__connector-line--warning' : ''}`}
+                          style={isWarning ? undefined : { stroke: rb1Color }}
+                        />
+                        <path
+                          d={rightPath}
+                          fill="none"
+                          vectorEffect="non-scaling-stroke"
+                          className={`axis-monitor__connector-line${isWarning ? ' axis-monitor__connector-line--warning' : ''}`}
+                          style={isWarning ? undefined : { stroke: rb2Color }}
+                        />
+                        </g>
+                      )
+                    })}
+                  </svg>
+                </>
+              )}
             </div>
 
-            {/* モバイル表示：平均トルクカード、RB切替、軸別データ表 */}
-            <div className="axis-monitor__mobile-average-torque-label" style={{ color: theme.text }}>
-              平均トルク
-            </div>
-            <div className="axis-monitor__mobile-average-torque">
-              <div
-                className={`axis-monitor__mobile-torque-card${selectedMobileRB === 'RB2' ? ' is-dimmed' : ''}`}
-                style={{ borderColor: rb1Color, color: rb1Color }}
-              >
-                <strong>{Math.round(rb1AvgTorque)}%</strong>
-              </div>
-              <div
-                className={`axis-monitor__mobile-torque-card${selectedMobileRB === 'RB1' ? ' is-dimmed' : ''}`}
-                style={{ borderColor: rb2Color, color: rb2Color }}
-              >
-                <strong>{Math.round(rb2AvgTorque)}%</strong>
-              </div>
-            </div>
+            {/* モバイル・タブレット表示（900px以下）：平均トルクの数値カード、軸別データ表 */}
+            {isCompact && (
+              <>
+                <div className="axis-monitor__mobile-average-torque-label" style={{ color: theme.text }}>
+                  平均トルク
+                </div>
+                <div className="axis-monitor__mobile-average-torque">
+                  <div
+                    className={`axis-monitor__mobile-torque-card${selectedMobileRB === 'RB2' ? ' is-dimmed' : ''}`}
+                    style={{ borderColor: rb1Color, color: rb1Color }}
+                  >
+                    <strong>{Math.round(rb1AvgTorque)}%</strong>
+                  </div>
+                  <div
+                    className={`axis-monitor__mobile-torque-card${selectedMobileRB === 'RB1' ? ' is-dimmed' : ''}`}
+                    style={{ borderColor: rb2Color, color: rb2Color }}
+                  >
+                    <strong>{Math.round(rb2AvgTorque)}%</strong>
+                  </div>
+                </div>
 
-            <AxisTable
-              rows={displayRows}
-              threshold={THRESHOLD}
-              rb1Color={rb1Color}
-              rb2Color={rb2Color}
-              theme={theme}
-              warningAxes={warningAxes}
-              selectedRB={selectedMobileRB}
-            />
+                <AxisTable
+                  rows={displayRows}
+                  threshold={THRESHOLD}
+                  rb1Color={rb1Color}
+                  rb2Color={rb2Color}
+                  theme={theme}
+                  warningAxes={warningAxes}
+                  selectedRB={selectedMobileRB}
+                />
+              </>
+            )}
 
           </div>
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import PanelFrame from '../common/PanelFrame'
-import JobFlowDiagram from './JobFlowDiagram'
+import JobFlowDiagram, { useLatchedNgSignal } from './JobFlowDiagram'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import type { CycleRecord } from '../../hooks/useCycleHistory'
 import type { Theme } from '../../types'
@@ -24,13 +24,26 @@ export interface MetricPoint {
   ngCount: number
 }
 
-
-
-
 type MetricKey = Exclude<keyof MetricPoint, 'date'>
 
+/** 日別実績（棒グラフ）専用のデータ点。PLC側が当日／1日前／2日前の値をそれぞれ別アドレスに
+ *  ラッチして保持するようになったため、MetricPointのように「日ごとに1件ずつコード側で蓄積する」
+ *  方式は不要（＝ラッチされておらず表示が残らない不具合の原因だった）。3件（古い→新しい）を
+ *  そのまま渡すだけでよい。
+ *  異常回数＝D15112(当日)／D15152(1日前)／D15194(2日前)
+ *  取付実行回数＝D15114(当日)／D15154(1日前)／D15196(2日前)
+ *  取出実行回数＝D15116(当日)／D15156(1日前)／D15198(2日前) */
+export interface DailyMetricPoint {
+  /** 表示ラベル（例: '9/22' '9/23' '9/24' のような実際の日付。'当日'などの文言ではなく
+   *  日付そのものを表示する） */
+  date: string
+  anomalyCount: number
+  tightenCount: number
+  loosenCount: number
+}
+
 /** 異常回数・取付実行回数・取出実行回数の時系列推移点（横軸＝稼働時間）。
- *  PLCアドレス未定のため、指定が無い場合はサンプル値でフォールバック表示する。
+ *  データが空の間はグラフに「データ待機中…」を表示する（サンプル値は使わない）。
  *  time フィールドは元データのまま保持するが、実際の描画ラベルはPCの実時計から30分単位で
  *  機械的に再生成するため、ここでの time の値自体は表示に直接使われない（値の並び順の目印として保持）。 */
 export interface HourlyTrendPoint {
@@ -46,8 +59,14 @@ interface OperationResultsProps {
   isEditing: boolean
   /** PLCのDアドレスから受け取る現在工程ステップ値。フロー図の該当工程を強調表示します。 */
   activeStep?: number
-  /** 稼働実績（異常回数・上刃挿入回数・取付実行回数・取出実行回数・検査OK/NG）の日別データ */
+  /** 稼働実績（異常回数・上刃挿入回数・取付実行回数・取出実行回数・検査OK/NG）の日別データ。
+   *  KPIカード・OK/NG円グラフは引き続きこちら（＝D15181・D15186・D15188など、これまでどおりの
+   *  最新値）を参照する。日別実績グラフ（棒グラフ）は下のdailyMetricsを参照するため対象外。 */
   metrics: MetricPoint[]
+  /** 日別実績グラフ（棒グラフ、当日／1日前／2日前）専用データ。PLC側がラッチして保持している
+   *  D15112〜／D15152〜／D15194〜（config/operationMetricsAddresses.ts参照）を3件そのまま渡す。
+   *  未指定または空のときは「データ待機中…」を表示する。 */
+  dailyMetrics?: DailyMetricPoint[]
   /** 稼働時間（秒）。usePlcCycleSignals().uptimeTotalSec（D15002時／D15004分から算出）を渡す。
    *  KPIカードに表示するのみで、日別実績の棒グラフには含めない（旧・検査回数カードの位置に表示）。 */
   operatingTimeSec?: number
@@ -66,11 +85,10 @@ interface OperationResultsProps {
   /** 刃物画像のURL。後から差替え可能な構造にするため、固定値ではなくpropsで受け取る */
   bladeImageUrl?: string
   /** 異常回数・取付実行回数・取出実行回数の時系列推移データ（横軸＝稼働時間）。
-   *  PLCアドレス未定のため未指定時はサンプル値を使用 */
+   *  未指定または空のときは「データ待機中…」を表示する */
   hourlyTrend?: HourlyTrendPoint[]
   onEditingChange: (value: boolean) => void
 }
-
 
 const CHART_W = 560
 const PIE_CANVAS_H = 460
@@ -134,19 +152,6 @@ const OKNG_DEFS: { key: MetricKey; label: string; defaultColor: string }[] = [
   { key: 'ngCount', label: 'NG', defaultColor: '#e0503f' },
 ]
 
-
-
-/** 異常回数・取付実行回数・取出実行回数の推移サンプル値（PLCアドレス確定まではこちらを表示）。
- *  横軸は10:00スタートの2時間を5ポイントに等分（30分刻み）。
- *  ※実際の描画ラベルはPCの実時計から生成し直すため、ここの time はダミー値として扱われる。 */
-const SAMPLE_HOURLY_TREND: HourlyTrendPoint[] = [
-  { time: '10:00', anomalyCount: 2, tightenCount: 18, loosenCount: 17 },
-  { time: '10:30', anomalyCount: 4, tightenCount: 40, loosenCount: 38 },
-  { time: '11:00', anomalyCount: 6, tightenCount: 65, loosenCount: 63 },
-  { time: '11:30', anomalyCount: 9, tightenCount: 92, loosenCount: 90 },
-  { time: '12:00', anomalyCount: 11, tightenCount: 120, loosenCount: 118 },
-]
-
 /** サイクルタイム表示用：秒 → "HH:MM:SS" */
 function formatHms(sec?: number) {
   if (sec === undefined || sec === null || sec < 0 || Number.isNaN(sec)) return '--:--:--'
@@ -174,20 +179,17 @@ function formatDiffSec(diff: number | null) {
   return `${sign}${Math.abs(diff).toFixed(1)}秒`
 }
 
-/** 稼働時間カード表示用：秒 → "□□：□□"（時：分）。
+/** 稼働時間カード表示用：秒 → "○h○min"（時・分）。
  *  PLC側がD15002(時)・D15004(分)を別々に持っているのに合わせた表記。 */
-function formatOperatingTime(sec?: number) { 
-  if ( sec === undefined ||
-       sec === null || 
-       sec < 0 || Number.isNaN(sec) 
-  ) {
-     return '--h--min' 
+function formatOperatingTime(sec?: number) {
+  if (sec === undefined || sec === null || sec < 0 || Number.isNaN(sec)) {
+    return '--h--min'
   }
-  const total = Math.floor(sec) 
-  const h = Math.floor(total / 3600) 
-  const m = Math.floor((total % 3600) / 60) 
-  return `${h}h${m}min` }
-
+  const total = Math.floor(sec)
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  return `${h}h${m}min`
+}
 
 /** 指定した時刻を30分単位に切り捨てて "HH:MM" ラベルを返す。
  *  stepsBack を渡すと、そこから30分刻みで遡ったラベルを返す（直近点から過去方向へ生成する用途）。
@@ -231,6 +233,7 @@ export default function OperationResults({
   isEditing,
   activeStep,
   metrics,
+  dailyMetrics,
   operatingTimeSec,
   tightenCycleTimeSec,
   tightenBestCycleTimeSec,
@@ -240,10 +243,15 @@ export default function OperationResults({
   bladeImageUrl,
   hourlyTrend,
   cycleHistory,
-  onEditingChange,  
+  onEditingChange,
 }: OperationResultsProps) {
   const isMobile = useIsMobile()
   const [customColors, setCustomColors] = useState<Record<string, string>>({})
+
+  /** 刃物交換（NG時のみ発生する工程）の間、NG判定信号が瞬間値のため一旦falseに戻っても
+   *  OK側の見た目に戻ってしまわないよう、JobFlowDiagram側と同じルールでラッチする。
+   *  刃物交換の次工程に入った時点でラッチは解除される。 */
+  const latchedNgSignal = useLatchedNgSignal(activeStep, ngSignal)
 
   /** グラフエリア統合（④）：日別実績／稼働時間推移（異常・取付・取出）を一定間隔で自動切替する */
   const [carouselIndex, setCarouselIndex] = useState(0)
@@ -254,8 +262,6 @@ export default function OperationResults({
     return () => window.clearInterval(timer)
   }, [])
 
-
-  
   /** サイクル履歴（⑤）。PLC側が直近5件を保持するようになったため、算出は呼び出し元
    *  （usePlcCycleSignals）で行い、ここでは整形済みの配列を受け取るだけにしている。 */
   const history = cycleHistory ?? []
@@ -274,15 +280,34 @@ export default function OperationResults({
     prevLenRef.current = history.length
   }, [history])
 
-  const displayedHistory = history.slice(-CYCLE_HISTORY_DISPLAY_MAX)
+  /** No.・前回差分の算出は発生順（古い→新しい）のまま行い、表示直前だけ新しい順に並べ替える
+   *  （最新の記録を一番上に表示するため）。 */
+  const displayedHistory = history.slice(-CYCLE_HISTORY_DISPLAY_MAX).slice().reverse()
 
   /** モニタごとの実高さの違いに自動追従して、コンテンツ全体を「はみ出さない最大サイズ」にスケールする */
   const scaleOuterRef = useRef<HTMLDivElement | null>(null)
   const scaleInnerRef = useRef<HTMLDivElement | null>(null)
   const [contentScale, setContentScale] = useState(1)
 
-  const dates = metrics.map((m) => m.date)
   const latest = metrics.at(-1)
+
+  /** 日別実績（棒グラフ）：当日／1日前／2日前の3件固定。PLC側でラッチ済みのためコード側での
+   *  蓄積は不要（dailyMetricsをそのまま使う。未指定なら空配列＝「データ待機中…」表示）。 */
+  const dailyData = dailyMetrics ?? []
+  const dailyDates = dailyData.map((m) => m.date)
+  const dailyItems: ChartItem[] = useMemo(
+    () =>
+      HOURLY_DEFS.map((def) => ({
+        id: def.key,
+        label: def.label,
+        color: customColors[def.key] ?? def.defaultColor,
+        values: (dailyMetrics ?? []).map((m) => m[def.key]),
+      })),
+    [dailyMetrics, customColors]
+  )
+  const dailyGroupW = (BAR_CHART_W - BAR_PAD_L - BAR_PAD_R) / Math.max(dailyDates.length, 1)
+  const dailyBarW = Math.min(60, dailyGroupW / (dailyItems.length + 1))
+  const dailyMaxCount = computeMaxCount(dailyItems.map((it) => it.values))
 
   const kpiItems: ChartItem[] = useMemo(
     () =>
@@ -307,9 +332,6 @@ export default function OperationResults({
   )
 
   const plotH = BAR_CHART_H - BAR_PAD_T - BAR_PAD_B
-  const groupW = (BAR_CHART_W - BAR_PAD_L - BAR_PAD_R) / Math.max(dates.length, 1)
-  const barW = Math.min(60, groupW / (kpiItems.length + 1))
-  const maxCount = computeMaxCount(kpiItems.map((it) => it.values))
   const gridLines = 2
 
   const okNgTotals = useMemo(
@@ -321,6 +343,7 @@ export default function OperationResults({
 
   /** 稼働時間推移（④の折れ線グラフ）：
    *  ・実データ（hourlyTrend、30分間隔で蓄積される想定）から直近5点だけを表示範囲として切り出す
+   *  ・データが空のときはダミー点も作らず空配列を返す（「データ待機中…」表示）
    *  ・稼働時間（operatingTimeSec）が0.5h進むごとにこの範囲を更新する（30分未満の変化では再計算しない）
    *  ・横軸ラベルは元データの time をそのまま使わず、PCの実時計を30分単位に切り捨てて機械的に
    *    再生成する（:00 / :30 に必ず乗せるため。稼働時間ベースではなく実時間ベース）
@@ -329,22 +352,22 @@ export default function OperationResults({
   const hourlyWindowIndex =
     operatingTimeSec !== undefined ? Math.floor(operatingTimeSec / HOURLY_WINDOW_UPDATE_SEC) : undefined
 
-const hourlyData = useMemo(() => {
-  const source = hourlyTrend && hourlyTrend.length > 0 ? hourlyTrend : SAMPLE_HOURLY_TREND
-  const visible = source.slice(-HOURLY_VISIBLE_POINTS)
-  if (visible.length === 0) return visible
+  const hourlyData = useMemo(() => {
+    const source = hourlyTrend ?? []
+    const visible = source.slice(-HOURLY_VISIBLE_POINTS)
+    if (visible.length === 0) return []
 
-  const now = new Date()
-  const labeled = visible.map((p, i) => ({
-    ...p,
-    time: roundToHalfHourLabel(now, visible.length - 1 - i),
-  }))
+    const now = new Date()
+    const labeled = visible.map((p, i) => ({
+      ...p,
+      time: roundToHalfHourLabel(now, visible.length - 1 - i),
+    }))
 
-  // 常に末尾へ余白確保用のダミー(time: '')を1点追加する。
-  // 実点1〜4点の間はスロット数もそれに応じて2〜5に伸び、5点そろって初めて
-  // 6スロット（実点5＋ダミー1）で固定される。
-  return [...labeled, { ...labeled[labeled.length - 1], time: '' }]
-}, [hourlyTrend, hourlyWindowIndex])
+    // 常に末尾へ余白確保用のダミー(time: '')を1点追加する。
+    // 実点1〜4点の間はスロット数もそれに応じて2〜5に伸び、5点そろって初めて
+    // 6スロット（実点5＋ダミー1）で固定される。
+    return [...labeled, { ...labeled[labeled.length - 1], time: '' }]
+  }, [hourlyTrend, hourlyWindowIndex])
 
   const hourlyItems: ChartItem[] = useMemo(
     () =>
@@ -361,21 +384,22 @@ const hourlyData = useMemo(() => {
   const hourlyMaxY = computeHourlyMaxY(hourlyItems.map((it) => it.values))
   const hourlyGridLines = HOURLY_GRID_LINES
   const hourlyXAt = (i: number) => HOURLY_PAD_L + (hourlyPlotW / Math.max(hourlyData.length - 1, 1)) * i
-  const hourlyYAt = (v: number) => HOURLY_PAD_T + hourlyPlotH - (Math.min(Math.max(v, 0), hourlyMaxY) / hourlyMaxY) * hourlyPlotH
+  const hourlyYAt = (v: number) =>
+    HOURLY_PAD_T + hourlyPlotH - (Math.min(Math.max(v, 0), hourlyMaxY) / hourlyMaxY) * hourlyPlotH
   const hourlySeries = hourlyItems.map((it) => {
-  const points = it.values.map((v, i) => ({
-    x: hourlyXAt(i),
-    y: hourlyYAt(v),
-    time: hourlyData[i].time,
-    value: v,
-  }))
-  return {
-    ...it,
-    points,
-    // ダミーはtime: ''で判別。常に末尾1点だけを除外する
-    visiblePoints: points.filter((p) => p.time !== ''),
-  }
-})
+    const points = it.values.map((v, i) => ({
+      x: hourlyXAt(i),
+      y: hourlyYAt(v),
+      time: hourlyData[i].time,
+      value: v,
+    }))
+    return {
+      ...it,
+      points,
+      // ダミーはtime: ''で判別。常に末尾1点だけを除外する
+      visiblePoints: points.filter((p) => p.time !== ''),
+    }
+  })
 
   const handleColorChange = (id: string, color: string) => {
     setCustomColors((prev) => ({ ...prev, [id]: color }))
@@ -413,8 +437,10 @@ const hourlyData = useMemo(() => {
     }
   }, [
     metrics,
+    dailyMetrics,
     activeStep,
     ngSignal,
+    latchedNgSignal,
     isMobile,
     operatingTimeSec,
     tightenCycleTimeSec,
@@ -431,23 +457,17 @@ const hourlyData = useMemo(() => {
    *  やや小さめのフォントで表示する（"BEST"の文字はさらに一段小さく）。
    *  取付／取出それぞれのサイクルタイム・ベストタイムはD15032〜／D15052〜（config/cycleAddresses.ts）
    *  でPLCから確定アドレスが取れるようになったため、フォールバックは廃止した。 */
-   
-
-  
   const cycleTimeSection = (
-     <div className="op-results__cycletime-section">
-      <span
-       className="op-results__cycletime-heading"
-       style={{ color: theme.subtext }}
-      >
+    <div className="op-results__cycletime-section">
+      <span className="op-results__cycletime-heading" style={{ color: theme.subtext }}>
         サイクルタイム
       </span>
       <div className="op-results__cycletime-cards">
         <div
           className="op-results__cycletime-card"
           style={{
-           border: `1px solid ${theme.border}`,
-           background: theme.headerBg,
+            border: `1px solid ${theme.border}`,
+            background: theme.headerBg,
           }}
         >
           <span className="op-results__cycletime-name" style={{ color: theme.text }}>
@@ -461,13 +481,13 @@ const hourlyData = useMemo(() => {
             {formatHms(tightenCycleTimeSec)}
           </span>
         </div>
-         <div
+        <div
           className="op-results__cycletime-card"
           style={{
-           border: `1px solid ${theme.border}`,
-           background: theme.headerBg,
+            border: `1px solid ${theme.border}`,
+            background: theme.headerBg,
           }}
-         >
+        >
           <span className="op-results__cycletime-name" style={{ color: theme.text }}>
             取出
           </span>
@@ -483,7 +503,7 @@ const hourlyData = useMemo(() => {
     </div>
   )
 
-  /** 稼働時間カード：旧・検査回数カードの位置に表示。日別実績の棒グラフには含めない。表示形式は「□.□h」。 */
+  /** 稼働時間カード：旧・検査回数カードの位置に表示。日別実績の棒グラフには含めない。表示形式は「○h○min」。 */
   const operatingTimeCard = (
     <div className="op-results__kpi-card" style={{ borderLeftColor: theme.border, background: theme.headerBg }}>
       <span className="op-results__kpi-label" style={{ color: theme.subtext }}>
@@ -589,7 +609,7 @@ const hourlyData = useMemo(() => {
 
   /** OK/NG判定割合（ドーナツ）＋刃物画像（③）。NG時はボックス全体を赤色点滅させ、即座に異常を認識できるようにする。 */
   const okNgAndBlade = (
-    <div className={`op-results__okng-col${ngSignal ? ' op-results__okng-col--ng' : ''}`}>
+    <div className={`op-results__okng-col${latchedNgSignal ? ' op-results__okng-col--ng' : ''}`}>
       <svg
         className="op-results__okng-chart"
         viewBox={`0 0 ${CHART_W} ${PIE_CANVAS_H}`}
@@ -662,7 +682,8 @@ const hourlyData = useMemo(() => {
   )
 
   /** グラフエリア統合（④）：日別実績（棒グラフ）と稼働時間推移（異常回数・取付実行回数・取出実行回数の折れ線）を
-   *  一定間隔で自動切替。傾向把握が目的のため、棒の上の数値ラベルは表示しない（折れ線側は凡例のみ表示）。 */
+   *  一定間隔で自動切替。傾向把握が目的のため、棒の上の数値ラベルは表示しない（折れ線側は凡例のみ表示）。
+   *  データ未受信の間は、枠と目盛りを残したまま中央に「データ待機中…」を表示する。 */
   const graphCarousel = (
     <div className="op-results__graph-carousel">
       <div className="op-results__graph-carousel-head">
@@ -686,7 +707,7 @@ const hourlyData = useMemo(() => {
           >
             {Array.from({ length: gridLines + 1 }).map((_, i) => {
               const y = BAR_PAD_T + (plotH / gridLines) * i
-              const value = Math.round(maxCount - (maxCount / gridLines) * i)
+              const value = Math.round(dailyMaxCount - (dailyMaxCount / gridLines) * i)
               return (
                 <g key={i}>
                   <line x1={BAR_PAD_L} x2={BAR_CHART_W - 10} y1={y} y2={y} stroke={theme.border} strokeWidth={1} opacity={0.6} />
@@ -696,12 +717,23 @@ const hourlyData = useMemo(() => {
                 </g>
               )
             })}
-            {dates.map((date, dIdx) => {
-              const groupX = BAR_PAD_L + groupW * dIdx
+            {dailyDates.length === 0 && (
+              <text
+                x={BAR_CHART_W / 2}
+                y={BAR_CHART_H / 2}
+                textAnchor="middle"
+                fontSize={CHART_AXIS_FONT_SIZE}
+                fill={theme.subtext}
+              >
+                データ待機中…
+              </text>
+            )}
+            {dailyDates.map((date, dIdx) => {
+              const groupX = BAR_PAD_L + dailyGroupW * dIdx
               return (
                 <g key={date}>
                   <text
-                    x={groupX + groupW / 2}
+                    x={groupX + dailyGroupW / 2}
                     y={BAR_CHART_H - 10}
                     textAnchor="middle"
                     fontSize={CHART_AXIS_FONT_SIZE}
@@ -709,13 +741,13 @@ const hourlyData = useMemo(() => {
                   >
                     {date}
                   </text>
-                  {kpiItems.map((it, sIdx) => {
+                  {dailyItems.map((it, sIdx) => {
                     const count = it.values[dIdx] ?? 0
-                    const barH = (count / maxCount) * plotH
-                    const x = groupX + (groupW - kpiItems.length * barW) / 2 + sIdx * barW
+                    const barH = (count / dailyMaxCount) * plotH
+                    const x = groupX + (dailyGroupW - dailyItems.length * dailyBarW) / 2 + sIdx * dailyBarW
                     const y = BAR_PAD_T + plotH - barH
                     return (
-                      <rect key={it.id} x={x} y={y} width={barW - 10} height={barH} rx={1.5} fill={it.color} opacity={dIdx === dates.length - 1 ? 1 : 0.72}>
+                      <rect key={it.id} x={x} y={y} width={dailyBarW - 10} height={barH} rx={1.5} fill={it.color} opacity={dIdx === dailyDates.length - 1 ? 1 : 0.72}>
                         <title>{`${date} ${it.label}: ${count}回`}</title>
                       </rect>
                     )
@@ -745,29 +777,40 @@ const hourlyData = useMemo(() => {
                 </g>
               )
             })}
-           {hourlyData.map((p, i) => (
-            <text
-            key={`${p.time}-${i}`}
-            x={hourlyXAt(i)}
-            y={HOURLY_CHART_H - 8}
-            textAnchor="middle"
-            fontSize={CHART_AXIS_FONT_SIZE}
-            fill={theme.subtext}
-            opacity={p.time === '' ? 0 : 1}
-            >
-            {p.time}
-            </text>
+            {hourlyData.length === 0 && (
+              <text
+                x={HOURLY_CHART_W / 2}
+                y={HOURLY_CHART_H / 2}
+                textAnchor="middle"
+                fontSize={CHART_AXIS_FONT_SIZE}
+                fill={theme.subtext}
+              >
+                データ待機中…
+              </text>
+            )}
+            {hourlyData.map((p, i) => (
+              <text
+                key={`${p.time}-${i}`}
+                x={hourlyXAt(i)}
+                y={HOURLY_CHART_H - 8}
+                textAnchor="middle"
+                fontSize={CHART_AXIS_FONT_SIZE}
+                fill={theme.subtext}
+                opacity={p.time === '' ? 0 : 1}
+              >
+                {p.time}
+              </text>
             ))}
-          {hourlySeries.map((s) => (
-           <g key={s.id}>
-           <polyline points={s.visiblePoints.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={s.color} strokeWidth={3} />
-           {s.visiblePoints.map((p, i) => (
-           <circle key={i} cx={p.x} cy={p.y} r={4} fill={s.color}>
-           <title>{`${p.time} ${s.label}: ${p.value}回`}</title>
-            </circle>
-          ))}
-          </g>
-          ))}
+            {hourlySeries.map((s) => (
+              <g key={s.id}>
+                <polyline points={s.visiblePoints.map((p) => `${p.x},${p.y}`).join(' ')} fill="none" stroke={s.color} strokeWidth={3} />
+                {s.visiblePoints.map((p, i) => (
+                  <circle key={i} cx={p.x} cy={p.y} r={4} fill={s.color}>
+                    <title>{`${p.time} ${s.label}: ${p.value}回`}</title>
+                  </circle>
+                ))}
+              </g>
+            ))}
           </svg>
         )}
       </div>
@@ -777,53 +820,53 @@ const hourlyData = useMemo(() => {
   /** サイクル履歴（グラフのすぐ下にボックス表示・最大5件・新規は下からスライドイン）
    *  ベスト／現在サイクルタイムはKPIカード側に統合済みのため、ここは履歴表のみ */
   const cycleSection = (
-      <div className={`op-results__cycle-history${isMobile ? ' op-results__cycle-history--mobile' : ''}`}>
-        <span className="op-results__cycle-history-title" style={{ color: theme.text }}>
-          サイクル履歴
-        </span>
-        <table className="op-results__cycle-history-table">
-          <thead>
-            <tr style={{ color: theme.subtext }}>
-              <th>No.</th>
-              <th>開始時刻</th>
-              <th>終了時刻</th>
-              <th>サイクルタイム</th>
-              <th>前回との差</th>
-            </tr>
-          </thead>
+    <div className={`op-results__cycle-history${isMobile ? ' op-results__cycle-history--mobile' : ''}`}>
+      <span className="op-results__cycle-history-title" style={{ color: theme.text }}>
+        サイクル履歴
+      </span>
+      <table className="op-results__cycle-history-table">
+        <thead>
+          <tr style={{ color: theme.subtext }}>
+            <th>No.</th>
+            <th>開始時刻</th>
+            <th>終了時刻</th>
+            <th>サイクルタイム</th>
+            <th>前回との差</th>
+          </tr>
+        </thead>
 
-  <tbody>
-  {displayedHistory.length === 0 && (
-    <tr>
-      <td colSpan={5} style={{ color: theme.subtext }}>
-        データ収集中…
-      </td>
-    </tr>
-  )}
-{displayedHistory.map((rec) => (
-  <tr key={rec.no} className={rec.no === flashNo ? 'op-results__cycle-history-row--enter' : undefined} style={{ color: theme.text }}>
-    <td>{rec.no}</td>
-    <td>{rec.startTime}</td>
-    <td>{rec.endTime}</td>
-    <td>{formatMmSs(rec.cycleTimeSec)}</td>
-    <td>{formatDiffSec(rec.diffFromPrevSec)}</td>
-  </tr>
-))}
-  {/* 履歴件数が5件未満の間、テーブルの高さが変動して全体の自動縮小(contentScale)に
-      影響しないよう、不足分を非表示の空行で埋めて常に5行分の高さを確保する */}
-  {displayedHistory.length > 0 &&
-    Array.from({ length: CYCLE_HISTORY_DISPLAY_MAX - displayedHistory.length }).map((_, i) => (
-      <tr key={`filler-${i}`} style={{ visibility: 'hidden' }} aria-hidden="true">
-        <td>-</td>
-        <td>--:--</td>
-        <td>--:--</td>
-        <td>--:--</td>
-        <td>-</td>
-      </tr>
-    ))}
-</tbody>
-        </table>
-      </div>
+        <tbody>
+          {displayedHistory.length === 0 && (
+            <tr>
+              <td colSpan={5} style={{ color: theme.subtext }}>
+                データ収集中…
+              </td>
+            </tr>
+          )}
+          {displayedHistory.map((rec) => (
+            <tr key={rec.no} className={rec.no === flashNo ? 'op-results__cycle-history-row--enter' : undefined} style={{ color: theme.text }}>
+              <td>{rec.no}</td>
+              <td>{rec.startTime}</td>
+              <td>{rec.endTime}</td>
+              <td>{formatMmSs(rec.cycleTimeSec)}</td>
+              <td>{formatDiffSec(rec.diffFromPrevSec)}</td>
+            </tr>
+          ))}
+          {/* 履歴件数が5件未満の間、テーブルの高さが変動して全体の自動縮小(contentScale)に
+              影響しないよう、不足分を非表示の空行で埋めて常に5行分の高さを確保する */}
+          {displayedHistory.length > 0 &&
+            Array.from({ length: CYCLE_HISTORY_DISPLAY_MAX - displayedHistory.length }).map((_, i) => (
+              <tr key={`filler-${i}`} style={{ visibility: 'hidden' }} aria-hidden="true">
+                <td>-</td>
+                <td>--:--</td>
+                <td>--:--</td>
+                <td>--:--</td>
+                <td>-</td>
+              </tr>
+            ))}
+        </tbody>
+      </table>
+    </div>
   )
 
   return (
@@ -922,6 +965,5 @@ const hourlyData = useMemo(() => {
         )}
       </div>
     </PanelFrame>
-    
   )
 }

@@ -498,3 +498,41 @@
 .admin-panel__gate--inline .admin-panel__pw-input {
   width: 220px;
 }
+
+/* ---- デバッグ表示（生ログの件数・日付内訳） ---- */
+.admin-panel__debug {
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px dashed var(--nq-border, #245d9b);
+}
+
+.admin-panel__debug-toggle {
+  font-size: 13px;
+  padding: 6px 16px;
+}
+
+.admin-panel__debug-body {
+  margin-top: 12px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--nq-subtext, #94a3b8);
+}
+
+.admin-panel__debug-body strong {
+  color: var(--nq-text, #f1f5f9);
+}
+
+.admin-panel__debug-subtitle {
+  margin: 10px 0 4px;
+}
+
+.admin-panel__debug-list {
+  max-height: 200px;
+  overflow-y: auto;
+  margin: 0 0 10px;
+  padding-left: 18px;
+}
+
+.admin-panel__debug-flag {
+  font-size: 12px;
+}

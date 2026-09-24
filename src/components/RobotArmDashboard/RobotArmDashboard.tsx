@@ -28,13 +28,10 @@ type Props = {
 // ステップ番号 + ラベル表から「現在工程」表示用の情報を組み立てる
 function buildFlowStatus(
   step: number | undefined,
-  labels: Record<number, string>,
-  ngSignal?: boolean
+  labels: Record<number, string>
 ) {
+  // 異常表示は「状態」側で行うため、工程内容には異常を混ぜない
   const total = Object.keys(labels).length
-  if (ngSignal) {
-    return { currentLabel: '異常', current: step ?? 0, total }
-  }
   if (!step) {
     return { currentLabel: '--', current: 0, total }
   }
@@ -190,8 +187,8 @@ export default function RobotArmDashboard({
   }, [overallStatus, onStatusChange])
   const canvasBg = isLightColor(theme.bg) ? 'rgba(0, 0, 0, 0.15)' : 'rgba(255, 255, 255, 0.14)'
   const abnormalColor = isLightColor(theme.bg) ? ABNORMAL_COLOR_LIGHT : ABNORMAL_COLOR_DARK
-  const rb1FlowStatus = buildFlowStatus(rb1Step, RB1_FLOW_STEP_LABELS, ngSignal)
-  const rb2FlowStatus = buildFlowStatus(rb2Step, RB2_FLOW_STEP_LABELS, ngSignal)
+  const rb1FlowStatus = buildFlowStatus(rb1Step, RB1_FLOW_STEP_LABELS)
+  const rb2FlowStatus = buildFlowStatus(rb2Step, RB2_FLOW_STEP_LABELS)
   // 共通「現在工程」カードは、RB1の値の流用ではなくD15000（全体フロー）由来の値を使う
   const overallFlowStatus = getOverallFlowStatus(activeStep, ngSignal)
 

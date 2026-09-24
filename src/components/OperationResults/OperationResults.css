@@ -223,6 +223,11 @@
   border: 1px solid var(--border-color);
   border-radius: 8px;
   padding: 10px 12px;
+  /* NG時の光る枠（box-shadowが最大8px外側へ広がる）は、右端・下端が
+     op-results__scale-outer の overflow:hidden に切り取られていた。
+     グリッド最右列・最下行に接しているため、広がり分（8px）より大きい余白を右・下に確保する */
+  margin-right: 10px;
+  margin-bottom: 10px;
 }
 
 .op-results__okng-col--ng {
@@ -575,8 +580,9 @@
   display: none;
 }
 
-@media (max-width: 768px) {
+@media (max-width: 1376px) {
   .op-results__top-grid {
     grid-template-columns: 1fr;
   }
 }
+

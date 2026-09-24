@@ -7,8 +7,9 @@
 // このフック・呼び出し側のコンポーネントは変更不要になる想定。
 //
 // ストレージ層が非同期（Promiseベース）になったため、
-// logAnswer / getOverallStats / getBreakdown / getDailyCorrectRates は
-// すべて Promise を返す点に注意（呼び出し側は await するか .then() する）。
+// logAnswer / getOverallStats / getBreakdown / getDailyCorrectRates /
+// getDailyCorrectRatesByCategory はすべて Promise を返す点に注意
+// （呼び出し側は await するか .then() する）。
 
 import { useCallback, useMemo } from 'react'
 import type {
@@ -36,13 +37,37 @@ function todayStr(d = new Date()): string {
 // 正答率（correctRate）の分母・分子どちらにも含めない。
 // ここで isAnswered = false になったログは、以下の
 //   ・getOverallStats（サイドのリング表示・モバイルの累計正解率）
-//   ・getDailyCorrectRates（作成者ページの日別グラフ／モニタ埋め込みのグラフ）
+//   ・getDailyCorrectRates / getDailyCorrectRatesByCategory（作成者ページの
+//     日別グラフ／モニタ埋め込みのグラフ）
 // の集計から丸ごと除外される。
 // 一方 getBreakdown（作成者ページの選択肢別の内訳バー）は「何人がわからない／
 // 未回答だったか」を見せるための集計なので、そちらには影響しない
 // （わからない・未回答も1つずつの選択肢として個別の行に表示される）。
 function isAnswered(log: QuizAnswerLog): boolean {
   return log.choiceIndex !== UNKNOWN_CHOICE_INDEX && log.choiceIndex !== TIMEOUT_CHOICE_INDEX
+}
+
+// dates × idSet の条件で dayLogs → 集計結果1件分を作る共通処理。
+// getDailyCorrectRates / getDailyCorrectRatesByCategory の両方から使う。
+function buildDailyRates(
+  logs: QuizAnswerLog[],
+  dates: string[],
+  idSet: Set<string> | null
+): DailyCorrectRate[] {
+  return dates.map((date) => {
+    const dayLogs = logs.filter(
+      (l) => l.date === date && (!idSet || idSet.has(l.questionId))
+    )
+    const answered = dayLogs.filter(isAnswered)
+    const totalAnswered = answered.length
+    const totalCorrect = answered.filter((l) => l.correct).length
+    return {
+      date,
+      totalAnswered,
+      totalCorrect,
+      correctRate: totalAnswered > 0 ? Math.round((totalCorrect / totalAnswered) * 100) : 0,
+    }
+  })
 }
 
 export function useQuizAnswerLog() {
@@ -100,35 +125,65 @@ export function useQuizAnswerLog() {
 
   // 第2引数 questionIds で対象問題を絞り込める（省略時は全問題＝全体）。
   // 「わからない」「未回答（タイムアウト）」はどちらも isAnswered で
-  // 正答率の分母・分子どちらからも除外される（作成者ページの日別グラフ／
-  // モニタ埋め込みのカテゴリ別グラフの両方がこの関数を使っている）。
+  // 正答率の分母・分子どちらからも除外される（作成者ページの日別グラフに使用）。
   const getDailyCorrectRates = useCallback(
     async (dates: string[], questionIds?: string[]): Promise<DailyCorrectRate[]> => {
       const logs = await store.getAll()
       const idSet = questionIds ? new Set(questionIds) : null
-
-      return dates.map((date) => {
-        const dayLogs = logs.filter(
-          (l) => l.date === date && (!idSet || idSet.has(l.questionId))
-        )
-        const answered = dayLogs.filter(isAnswered)
-        const totalAnswered = answered.length
-        const totalCorrect = answered.filter((l) => l.correct).length
-        return {
-          date,
-          totalAnswered,
-          totalCorrect,
-          correctRate: totalAnswered > 0 ? Math.round((totalCorrect / totalAnswered) * 100) : 0,
-        }
-      })
+      return buildDailyRates(logs, dates, idSet)
     },
     [store]
   )
 
+  // 複数カテゴリの日別正解率をまとめて計算する版。
+  // store.getAll() を1回だけ呼び、その結果を全カテゴリで使い回すことで
+  // 「カテゴリ数ぶん getAll()（＝ネットワーク越しの全ログ取得）が走る」
+  // 問題を解消する（NameplateQuiz.tsx の embedded グラフ表示用）。
+  const getDailyCorrectRatesByCategory = useCallback(
+    async (
+      dates: string[],
+      categoryQuestionIds: Record<string, string[] | undefined>
+    ): Promise<Record<string, DailyCorrectRate[]>> => {
+      const logs = await store.getAll() // ← ここが1回だけになる
+
+      const result: Record<string, DailyCorrectRate[]> = {}
+      for (const [category, questionIds] of Object.entries(categoryQuestionIds)) {
+        const idSet = questionIds ? new Set(questionIds) : null
+        result[category] = buildDailyRates(logs, dates, idSet)
+      }
+      return result
+    },
+    [store]
+  )
+
+  // ── デバッグ用：一切加工しない生ログをそのまま返す ──────────────
+  // 「40回答したのに集計が9件」のような食い違いを調べるためのもの。
+  // 作成者ページ側に生ログの件数・日付内訳・choiceIndex内訳をそのまま
+  // 見せることで、①APIが本当に全件返しているか、②date文字列が
+  // dateOptionsとズレていないか（タイムゾーン差など）、③わからない／
+  // 未回答が想定以上に多くないか、を切り分けられるようにする。
+  const debugGetAllLogs = useCallback(() => store.getAll(), [store])
+
   const clearLogs = useCallback(() => store.clear(), [store])
 
   return useMemo(
-    () => ({ logAnswer, getOverallStats, getBreakdown, getDailyCorrectRates, clearLogs }),
-    [logAnswer, getOverallStats, getBreakdown, getDailyCorrectRates, clearLogs]
+    () => ({
+      logAnswer,
+      getOverallStats,
+      getBreakdown,
+      getDailyCorrectRates,
+      getDailyCorrectRatesByCategory,
+      debugGetAllLogs,
+      clearLogs,
+    }),
+    [
+      logAnswer,
+      getOverallStats,
+      getBreakdown,
+      getDailyCorrectRates,
+      getDailyCorrectRatesByCategory,
+      debugGetAllLogs,
+      clearLogs,
+    ]
   )
 }

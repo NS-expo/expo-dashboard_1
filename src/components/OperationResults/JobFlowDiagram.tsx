@@ -1,4 +1,4 @@
-import { useEffect, useRef, type ReactNode } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { Theme } from '../../types'
 import { useIsMobile } from '../../hooks/useMediaQuery'
 import './JobFlowDiagram.css'
@@ -44,6 +44,38 @@ const OVERALL_FLOW: FlowNodeDef[] = [
   { id: 'ov-7', kind: 'process', label: '動作準備', plcStep: 9 },
 ]
 const OVERALL_DECISION_STEP = OVERALL_FLOW.find((n) => n.id === 'ov-d')!.plcStep!
+/** 「刃物交換」工程のPLCステップ番号（7）。刃物交換は基本NG時にしか発生しないため、
+ *  この工程の間はNG判定信号が瞬間値のまま消えてもNG表示を維持する（下のラッチ処理で使用）。 */
+const BLADE_EXCHANGE_STEP = OVERALL_FLOW.find((n) => n.id === 'ov-5')!.plcStep!
+
+/**
+ * NG判定信号（ngSignal）はPLCが判定確定の瞬間だけ送る値のため、「検査結果OK？」の
+ * 分岐を過ぎて「刃物交換」工程に進むころには既にfalse（＝見かけ上はOKがラッチされた状態）
+ * に戻ってしまっていることがある。刃物交換は基本NG時にしか発生しない工程なので、
+ * この間はOK側の色・表示になってしまうのは誤りで、NGを維持すべき。
+ *
+ * そこで、ngSignalがtrueになった時点でラッチし、刃物交換工程（BLADE_EXCHANGE_STEP）を
+ * 抜けて次の工程に進んだタイミングでラッチを解除する。分岐に到達する前は生のngSignalを
+ * そのまま返す（OK判定側はラッチ不要のため、ラッチ解除後は再び生の値に追従する）。
+ */
+export function useLatchedNgSignal(activeStep: number | undefined, ngSignal: boolean | undefined): boolean | undefined {
+  const [latched, setLatched] = useState(false)
+  const prevStepRef = useRef<number | undefined>(activeStep)
+
+  useEffect(() => {
+    if (ngSignal) setLatched(true)
+
+    const prevStep = prevStepRef.current
+    // 刃物交換工程から次の工程へ進んだ（＝「次の動作に入った」）タイミングでラッチ解除
+    if (activeStep !== undefined && prevStep === BLADE_EXCHANGE_STEP && activeStep !== prevStep) {
+      setLatched(false)
+    }
+    prevStepRef.current = activeStep
+  }, [activeStep, ngSignal])
+
+  if (activeStep === undefined || activeStep < OVERALL_DECISION_STEP) return ngSignal
+  return latched || ngSignal
+}
 
 /** 「n/m工程」の進捗を、plcStepを持つノードの数から計算する */
 function computeProgress(nodes: FlowNodeDef[], activeStep: number | undefined, totalOverride?: number) {
@@ -470,8 +502,11 @@ interface JobFlowDiagramProps {
  *  モバイルでは横スクロールのフロー図自体が不要なため、現在工程のみを表示する簡易ビューに切り替える。 */
 export default function JobFlowDiagram({ theme, activeStep, ngSignal }: JobFlowDiagramProps) {
   const isMobile = useIsMobile()
-  const { nodes, resolved, progress } = resolveOverallFlow(activeStep, ngSignal)
-  const resolvedChip = resolved ? { nodeId: 'ov-d', label: ngSignal ? 'NG' : 'OK', color: ngSignal ? NG_COLOR : OK_COLOR } : undefined
+  const latchedNgSignal = useLatchedNgSignal(activeStep, ngSignal)
+  const { nodes, resolved, progress } = resolveOverallFlow(activeStep, latchedNgSignal)
+  const resolvedChip = resolved
+    ? { nodeId: 'ov-d', label: latchedNgSignal ? 'NG' : 'OK', color: latchedNgSignal ? NG_COLOR : OK_COLOR }
+    : undefined
 
   if (isMobile) {
     const current = findCurrentStep(nodes, activeStep, resolvedChip)

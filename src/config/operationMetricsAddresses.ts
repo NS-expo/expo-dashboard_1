@@ -11,6 +11,11 @@
 //   CYCLE_CHANGE_BIT_ADDRESS）はここでは廃止しました。PLC側が直近5件のサイクル履歴を
 //   直接保持するようになったため、config/cycleAddresses.ts の確定アドレス（D15014〜、
 //   D15032〜、D15200〜）と hooks/usePlcCycleSignals.ts に置き換えています。
+//
+// ※ 日別実績（棒グラフ）用に、異常回数・取付実行回数・取出実行回数それぞれの当日／1日前／
+//   2日前の値をPLC側がラッチして保持するアドレスが確定したため、下部に追加しています
+//   （hooks/usePlcDailyMetricsSignals.ts で使用）。KPIカード側（INSPECT_COUNT_ADDRESS〜
+//   NG_RATIO_ADDRESS）は引き続き最新値のみを見ればよく、変更はありません。
 
 /** 検査回数（D15180） */
 export const INSPECT_COUNT_ADDRESS = 15180
@@ -40,4 +45,43 @@ export const OPERATION_METRICS_ADDRESSES = [
   OK_RATIO_ADDRESS,
   NG_RATIO_ADDRESS,
   NG_SIGNAL_ADDRESS,
+]
+
+// ─────────────────────────────────────────────────────────────
+// 日別実績（棒グラフ）専用：当日／1日前／2日前のラッチ済みアドレス
+// （hooks/usePlcDailyMetricsSignals.ts が参照する）
+// ─────────────────────────────────────────────────────────────
+
+/** 異常回数：当日（D15112） */
+export const ANOMALY_COUNT_TODAY_ADDRESS = 15112
+/** 異常回数：1日前（D15152） */
+export const ANOMALY_COUNT_YESTERDAY_ADDRESS = 15152
+/** 異常回数：2日前（D15194） */
+export const ANOMALY_COUNT_2DAYS_AGO_ADDRESS = 15194
+
+/** 取付実行回数：当日（D15114） */
+export const TIGHTEN_COUNT_TODAY_ADDRESS = 15114
+/** 取付実行回数：1日前（D15154） */
+export const TIGHTEN_COUNT_YESTERDAY_ADDRESS = 15154
+/** 取付実行回数：2日前（D15196） */
+export const TIGHTEN_COUNT_2DAYS_AGO_ADDRESS = 15196
+
+/** 取出実行回数：当日（D15116） */
+export const LOOSEN_COUNT_TODAY_ADDRESS = 15116
+/** 取出実行回数：1日前（D15156） */
+export const LOOSEN_COUNT_YESTERDAY_ADDRESS = 15156
+/** 取出実行回数：2日前（D15198） */
+export const LOOSEN_COUNT_2DAYS_AGO_ADDRESS = 15198
+
+/** usePlcWebSocket の selectedAddresses にまとめて渡すための一覧（日別実績グラフ用） */
+export const DAILY_METRICS_ADDRESSES = [
+  ANOMALY_COUNT_TODAY_ADDRESS,
+  ANOMALY_COUNT_YESTERDAY_ADDRESS,
+  ANOMALY_COUNT_2DAYS_AGO_ADDRESS,
+  TIGHTEN_COUNT_TODAY_ADDRESS,
+  TIGHTEN_COUNT_YESTERDAY_ADDRESS,
+  TIGHTEN_COUNT_2DAYS_AGO_ADDRESS,
+  LOOSEN_COUNT_TODAY_ADDRESS,
+  LOOSEN_COUNT_YESTERDAY_ADDRESS,
+  LOOSEN_COUNT_2DAYS_AGO_ADDRESS,
 ]

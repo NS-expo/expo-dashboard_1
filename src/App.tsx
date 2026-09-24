@@ -1,3 +1,4 @@
+// App.tsx（変更なし。参考として全文）
 import { useState, useRef, useEffect } from 'react'
 import './App.css'
 import type { ThemeKey, PageKey, NameplateQuestion } from './types'
@@ -17,7 +18,8 @@ import { useOperationHourlyTrend } from './hooks/useOperationHourlyTrend'
 import { usePlcJobFlowSignals, JOB_FLOW_ADDRESSES } from './hooks/usePlcJobFlowSignals'
 import { usePlcRbFlowSignals, RB_FLOW_ADDRESSES } from './hooks/usePlcRbFlowSignals'
 import { usePlcCycleSignals } from './hooks/usePlcCycleSignals'
-import { OPERATION_METRICS_ADDRESSES } from './config/operationMetricsAddresses'
+import { OPERATION_METRICS_ADDRESSES, DAILY_METRICS_ADDRESSES } from './config/operationMetricsAddresses'
+import { usePlcDailyMetricsSignals } from './hooks/usePlcDailyMetricsSignals'
 import { CYCLE_ADDRESSES } from './config/cycleAddresses'
 import { getRecentDates, METRIC_DAYS } from './utils/dateRange'
 import { ALL_ROBOT_STATUS_ADDRESSES } from './config/robotStatusAddresses'
@@ -199,9 +201,10 @@ export default function App() {
       ...RB_FLOW_ADDRESSES,
       ...CYCLE_ADDRESSES,
       ...RUN_STATUS_ADDRESSES,
+      ...DAILY_METRICS_ADDRESSES,
     ],
   })
-
+  const dailyMetrics = usePlcDailyMetricsSignals(plcData)
   const { activeStep } = usePlcJobFlowSignals(plcData)
   const { rb1Step, rb2Step } = usePlcRbFlowSignals(plcData)
   const {
@@ -576,6 +579,7 @@ export default function App() {
             hourlyTrend={hourlyTrendPoints}
             bladeImageUrl={SHARED_ROBOT_IMAGE_URL}
             onEditingChange={setIsEditing}
+            dailyMetrics={dailyMetrics}
           />
         </div>
 
