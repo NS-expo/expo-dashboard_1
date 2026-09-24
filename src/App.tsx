@@ -156,13 +156,16 @@ export default function App() {
     }
   }, [isMobile, currentPage])
 
-  // --- アイドル検知（モバイル版のみ：30分間ユーザー操作が無ければPLC接続を切る） ---
+  // --- アイドル検知（モバイル版のみ：10分間ユーザー操作が無ければPLC接続を切る） ---
   // モニタ版は展示会場で常時つけっぱなし運用のため、絶対に接続を切ってはいけない。
   // モバイル版（来場者のスマホ等での閲覧）に限り、マウス・タッチ・キー操作が無い状態が
-  // 続いたらWebSocket接続を停止する。切断後は同じページ内では復帰させず、
-  // QRコードなどからページを開き直したときだけ新しい接続を開始する。
+  // 続いたらWebSocket接続を停止する。画面消灯・別タブ移動中はブラウザがタイマーを
+  // 遅延させるため、最終操作時刻も保存し、画面復帰時にも経過時間を確認する。
+  // 切断後は同じページ内では復帰させず、QRコードなどからページを開き直したときだけ
+  // 新しい接続を開始する。
   const [isIdle, setIsIdle] = useState(false)
   const idleTimerRef = useRef<number | undefined>(undefined)
+  const lastActivityAtRef = useRef(0)
 
   useEffect(() => {
     if (!isMobile) {
@@ -171,21 +174,46 @@ export default function App() {
       return
     }
 
-    const resetIdleTimer = () => {
-      if (isIdle) return
+    const markIdleIfExpired = () => {
+      if (Date.now() - lastActivityAtRef.current >= IDLE_TIMEOUT_MS) {
+        setIsIdle(true)
+        return true
+      }
+      return false
+    }
+
+    const scheduleIdleTimer = () => {
       if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current)
-      idleTimerRef.current = window.setTimeout(() => setIsIdle(true), IDLE_TIMEOUT_MS)
+      const remainingMs = Math.max(
+        IDLE_TIMEOUT_MS - (Date.now() - lastActivityAtRef.current),
+        0,
+      )
+      idleTimerRef.current = window.setTimeout(markIdleIfExpired, remainingMs)
+    }
+
+    const markActivity = () => {
+      lastActivityAtRef.current = Date.now()
+      scheduleIdleTimer()
+    }
+
+    const checkVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        if (!markIdleIfExpired()) scheduleIdleTimer()
+      }
     }
 
     const activityEvents = ['pointerdown', 'mousemove', 'keydown', 'touchstart', 'wheel'] as const
-    activityEvents.forEach((evt) => window.addEventListener(evt, resetIdleTimer, { passive: true }))
-    resetIdleTimer() // 初期化（マウント時点からタイマー開始）
+    activityEvents.forEach((evt) => window.addEventListener(evt, markActivity, { passive: true }))
+    document.addEventListener('visibilitychange', checkVisibility)
+    lastActivityAtRef.current = Date.now()
+    scheduleIdleTimer() // 初期化（マウント時点からタイマー開始）
 
     return () => {
-      activityEvents.forEach((evt) => window.removeEventListener(evt, resetIdleTimer))
+      activityEvents.forEach((evt) => window.removeEventListener(evt, markActivity))
+      document.removeEventListener('visibilitychange', checkVisibility)
       if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current)
     }
-  }, [isMobile, isIdle])
+  }, [isMobile])
 
   const recentDates = getRecentDates(METRIC_DAYS)
   const DATES = recentDates.map((d) => d.label) //['MM/DD', 'MM/DD', 'MM/DD']
