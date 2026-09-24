@@ -13,8 +13,8 @@
 
 export type RobotKey = 'RB1' | 'RB2'
 
-/** 速度表示の基準値。720 deg/sを100%として換算する。 */
-export const ROBOT_SPEED_DISPLAY_MAX_DEG_PER_SEC = 720
+/** 速度表示の基準値。315 deg/sを100%として換算する。 */
+export const ROBOT_SPEED_DISPLAY_MAX_DEG_PER_SEC = 315
 
 export interface AxisAddressSet {
   /** トルク値（現在値） */

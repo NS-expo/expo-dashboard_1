@@ -38,7 +38,7 @@ export default function UtilizationRateDisplay({
   trackColor = DEFAULT_TRACK_COLOR,
   compact = false,
 }: Props) {
-  const clamped = Math.min(100, Math.max(0, rate))
+  const clamped = Math.min(200, Math.max(0, rate))
   const ringColor = color ?? RING_COLOR[colorKey]
 
   return (

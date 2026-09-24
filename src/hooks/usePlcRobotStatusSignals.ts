@@ -20,7 +20,7 @@ import {
 } from '../config/robotStatusAddresses'
 
 export interface AxisFullStat {
-  /** 720 deg/sを100%とした速度比 */
+  /** 315 deg/sを100%とした速度比 */
   speed: number
   torque: number
   peakTorque: number
@@ -31,7 +31,7 @@ export interface PlcRobotStatusSignals {
   rb2AxisStats: AxisFullStat[]
 }
 
-/** 720 deg/sを100%として速度を換算する。
+/** 315 deg/sを100%として速度を換算する。
  * 表示側（SpeedBar等）が整数前提のため、ここで四捨五入して整数化する。 */
 function toSpeedPercent(current: number): number {
   return Math.round((current / ROBOT_SPEED_DISPLAY_MAX_DEG_PER_SEC) * 100)
