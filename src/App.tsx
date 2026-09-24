@@ -422,9 +422,6 @@ export default function App() {
         flexDirection: 'column',
         minHeight: 'calc(var(--app-vh, 1vh) * 100)',
         background: theme.bg,
-        backgroundImage:
-          'radial-gradient(circle at 18% 20%, rgba(96, 165, 250, 0.10), transparent 34%), radial-gradient(circle at 82% 78%, rgba(52, 211, 153, 0.07), transparent 32%)',
-        backgroundSize: '180% 180%',
         color: theme.text,
         transition: 'background-color 0.3s, color 0.3s',
       }}
