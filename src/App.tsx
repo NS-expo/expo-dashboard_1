@@ -123,7 +123,7 @@ function getInitialPage(): PageKey {
 
 // アイドル検知：この時間ユーザー操作が無ければPLC接続を切る（Netlify無料枠の閲覧数上限対策）
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000
-const MAX_BROWSER_COUNT = 30
+const MAX_BROWSER_COUNT = 20
 
 export default function App() {
   const isTouchDevice = !window.matchMedia('(hover: hover)').matches
@@ -220,7 +220,7 @@ export default function App() {
   const DATES = recentDates.map((d) => d.label) //['MM/DD', 'MM/DD', 'MM/DD']
   
   const { data: plcData, browserCount } = usePlcWebSocket({
-    enabled: !isIdle, // モバイル版のみ、30分間操作が無ければ接続を切る（モニタ版はisIdleが常にfalseなので影響しない）
+    enabled: !isIdle, // モバイル版のみ、10分間操作が無ければ接続を切る（モニタ版はisIdleが常にfalseなので影響しない）
     isPlaying: true,
     intervalSec: 0.5,
     selectedAddresses: [
@@ -233,6 +233,12 @@ export default function App() {
       ...DAILY_METRICS_ADDRESSES,
     ],
   })
+
+  // 閲覧数上限（Netlify無料枠対策）／アイドル切断。どちらの場合も
+  // currentPageに関わらずページ内容そのものを表示しないようにするためのフラグ。
+  const isOverLimit = browserCount !== null && browserCount >= MAX_BROWSER_COUNT
+  const isBlocked = isIdle || isOverLimit
+
   const dailyMetrics = usePlcDailyMetricsSignals(plcData)
   const { activeStep } = usePlcJobFlowSignals(plcData)
   const { rb1Step, rb2Step } = usePlcRbFlowSignals(plcData)
@@ -343,13 +349,26 @@ export default function App() {
   // サンプル値表示が行われる）。アドレス確定後、config/operationMetricsAddresses.ts に
   // 追加のうえここで配線すること。
 
+  // トルク警告の動作確認用。確認後はfalseに戻す。
+  const DEBUG_FORCE_TORQUE_TEST = false
+  const debugRb1AxisStats = rb1AxisStats.map((stat) => ({
+    ...stat,
+    torque: 106,
+    peakTorque: 110,
+  }))
+  const debugRb2AxisStats = rb2AxisStats.map((stat) => ({
+    ...stat,
+    torque: 6,
+    peakTorque: 6,
+  }))
+
   const robotRB1 = {
-    motors: rb1AxisStats,
+    motors: DEBUG_FORCE_TORQUE_TEST ? debugRb1AxisStats : rb1AxisStats,
     utilizationRate: SAMPLE_RB1_UTILIZATION,
   }
 
   const robotRB2 = {
-    motors: rb2AxisStats,
+    motors: DEBUG_FORCE_TORQUE_TEST ? debugRb2AxisStats : rb2AxisStats,
     utilizationRate: SAMPLE_RB2_UTILIZATION,
   }
 
@@ -546,20 +565,6 @@ export default function App() {
           footerHeight={30}
         />
 
-        {/* アイドル状態の通知（10分操作が無く接続を切っている間だけ表示） */}
-        {isIdle && (
-          <div
-            className="app-idle-banner"
-            style={{
-              background: theme.surface,
-              border: `1px solid ${theme.border}`,
-              color: theme.subtext,
-            }}
-          >
-            10分間操作がなかったため接続を終了しました。再接続するにはQRコードから開き直してください
-          </div>
-        )}
-
         {/* 設定パネル */}
         {showSettings && (
           <div ref={settingsRef}>
@@ -579,72 +584,82 @@ export default function App() {
         )}
 
         {/* ページコンテンツ（4項目）*/}
-        <div className="dashboard-page" style={{ display: currentPage === 'dashboard' ? 'flex' : 'none' }}>
-          {browserCount !== null && browserCount >= MAX_BROWSER_COUNT ? (
-            <div className="app-idle-banner" style={{
-              background: theme.surface,
-              border: `1px solid ${theme.border}`,
-              color: theme.subtext,
-            }}>
-              現在の接続数が上限（{MAX_BROWSER_COUNT}アカウント）に達しているため、ダッシュボードを表示できません。
+        {/* 閲覧数上限 or アイドル切断の場合は、currentPageに関わらず内容を一切出さず案内のみ表示する */}
+        {isBlocked ? (
+          <div className="dashboard-page" style={{ display: 'flex' }}>
+            <div
+              className="app-idle-banner"
+              style={{
+                background: theme.surface,
+                border: `1px solid ${theme.border}`,
+                color: theme.subtext,
+              }}
+            >
+              {isOverLimit
+                ? `現在の閲覧数が上限（${MAX_BROWSER_COUNT}）に達しているため、画面を表示できません。`
+                : '10分間操作がなかったため接続を終了しました。再接続するにはQRコードから開き直してください'}
             </div>
-          ) : (
-            <RobotArmDashboard
-              theme={theme}
-              isEditing={isEditing}
-              onEditingChange={setIsEditing}
-              plcStatusById={plcStatusById}
-              onStatusChange={setDashboardStatus}
-              rb1Step={rb1Step}
-              rb2Step={rb2Step}
-              activeStep={activeStep}
-              ngSignal={overallNgSignal}
-            />
-          )}
-        </div>
+          </div>
+        ) : (
+          <>
+            <div className="dashboard-page" style={{ display: currentPage === 'dashboard' ? 'flex' : 'none' }}>
+              <RobotArmDashboard
+                theme={theme}
+                isEditing={isEditing}
+                onEditingChange={setIsEditing}
+                plcStatusById={plcStatusById}
+                onStatusChange={setDashboardStatus}
+                rb1Step={rb1Step}
+                rb2Step={rb2Step}
+                activeStep={activeStep}
+                ngSignal={overallNgSignal}
+              />
+            </div>
 
-        <div className="dashboard-page" style={{ display: currentPage === 'control' ? 'flex' : 'none' }}>
-          <OperationResults
-            theme={theme}
-            metrics={liveMetrics}
-            isEditing={isEditing}
-            activeStep={activeStep}
-            operatingTimeSec={uptimeTotalSec}
-            tightenCycleTimeSec={tightenCycleTimeSec}
-            tightenBestCycleTimeSec={tightenBestCycleTimeSec}
-            loosenCycleTimeSec={loosenCycleTimeSec}
-            loosenBestCycleTimeSec={loosenBestCycleTimeSec}
-            cycleHistory={cycleHistory}
-            ngSignal={overallNgSignal}
-            hourlyTrend={hourlyTrendPoints}
-            bladeImageUrl={SHARED_ROBOT_IMAGE_URL}
-            onEditingChange={setIsEditing}
-            dailyMetrics={dailyMetrics}
-          />
-        </div>
+            <div className="dashboard-page" style={{ display: currentPage === 'control' ? 'flex' : 'none' }}>
+              <OperationResults
+                theme={theme}
+                metrics={liveMetrics}
+                isEditing={isEditing}
+                activeStep={activeStep}
+                operatingTimeSec={uptimeTotalSec}
+                tightenCycleTimeSec={tightenCycleTimeSec}
+                tightenBestCycleTimeSec={tightenBestCycleTimeSec}
+                loosenCycleTimeSec={loosenCycleTimeSec}
+                loosenBestCycleTimeSec={loosenBestCycleTimeSec}
+                cycleHistory={cycleHistory}
+                ngSignal={overallNgSignal}
+                hourlyTrend={hourlyTrendPoints}
+                bladeImageUrl={SHARED_ROBOT_IMAGE_URL}
+                onEditingChange={setIsEditing}
+                dailyMetrics={dailyMetrics}
+              />
+            </div>
 
-        <div className="dashboard-page" style={{ display: currentPage === 'anomaly' ? 'flex' : 'none' }}>
-          <OperationStatus
-            theme={theme}
-            themeMode={mode}
-            robotRB1={robotRB1}
-            robotRB2={robotRB2}
-            cycleTime={cycleTime}
-            isEditing={isEditing}
-            onEditingChange={setIsEditing}
-          />
-        </div>
+            <div className="dashboard-page" style={{ display: currentPage === 'anomaly' ? 'flex' : 'none' }}>
+              <OperationStatus
+                theme={theme}
+                themeMode={mode}
+                robotRB1={robotRB1}
+                robotRB2={robotRB2}
+                cycleTime={cycleTime}
+                isEditing={isEditing}
+                onEditingChange={setIsEditing}
+              />
+            </div>
 
-        <div className="dashboard-page dashboard-page--nameplate" style={{ display: currentPage === 'quiz' ? 'flex' : 'none' }}>
-          <NameplateQuiz
-            theme={theme}
-            questions={sampleQuestions}
-            themeMode={getThemeMode(themeKey)}
-            isAdminOpen={isAdminOpen}
-            onAdminOpenChange={setIsAdminOpen}
-            dateOptions={recentDates.map((d) => ({ label: d.label, value: d.key }))}
-          />
-        </div>
+            <div className="dashboard-page dashboard-page--nameplate" style={{ display: currentPage === 'quiz' ? 'flex' : 'none' }}>
+              <NameplateQuiz
+                theme={theme}
+                questions={sampleQuestions}
+                themeMode={getThemeMode(themeKey)}
+                isAdminOpen={isAdminOpen}
+                onAdminOpenChange={setIsAdminOpen}
+                dateOptions={recentDates.map((d) => ({ label: d.label, value: d.key }))}
+              />
+            </div>
+          </>
+        )}
       </div>
       <footer
         className="app-footer"

@@ -1,27 +1,15 @@
 // useCycleHistory.ts
 //
-// 「ダッシュボード改修仕様書」の下記2項目に対応する純粋関数：
+// 「ダッシュボード改修仕様書」の下記項目に対応する純粋関数：
 //   ・⑤サイクルタイムを最下部ティッカー表示 → サイクルタイム機能追加（ベストサイクルタイム）
-//   ・サイクル履歴追加（新規パネル）＋ステータス判定ロジック
+//   ・サイクル履歴追加（新規パネル）
 //
-// 【旧方式との違い】
-// 以前はPLCから来る「サイクル終了時刻（cycleEndTimeRaw）」の変化をuseEffectで監視し、
-// コード側でReactの状態として無制限に履歴を蓄積していました。
-// 現在はPLC自身が直近5件（記憶1〜5）の開始/終了時刻・サイクルタイムを保持して送ってくる
-// ようになったため、コード側での蓄積・エッジ検知は不要になりました。
-// 5件のスナップショットを毎回まるごと受け取り、その場でステータス判定して整形するだけの
-// 純粋関数（buildCycleHistory）に置き換えています。呼び出し側は
-// hooks/usePlcCycleSignals.ts を参照してください。
-//
-// ステータス判定ロジック（仕様書どおり。時系列（発生順）に並べ替えてから判定する）:
-//   1件目            … 判定なし（pending）
-//   2件目            … 判定なし（pending）
-//   3件目            … 3件揃った時点で相互比較。他2件との差がいずれも10秒以内なら「正常」
-//                        正常判定されたデータを基準値プールに登録
-//   4件目以降        … 基準値＝正常履歴の平均値。|現在値−基準値|≦10秒なら「正常」、
-//                        10秒超なら「異常」。正常と判定されたものは基準値プールに追加
-
-export type CycleStatus = 'normal' | 'abnormal' | 'pending'
+// 【No.割り当てについて】
+// 開始・終了時刻は分単位までしか取得できない仕様のため、時刻の大小をソート・同一サイクル
+// 判定のキーに使うと、同じ分に複数サイクルが発生した場合に順序を誤る（cycleAddresses.ts
+// 側の説明の通り、記憶1〜5は物理的に固定されたスロットへ 1→2→3→4→5→1… の順で巡回書き込み
+// される）。そのため、時刻の大小比較ではなく「どのスロットの内容が前回から変化したか」を
+// 検知し、直前に書き込まれたスロットからの巡回順でNo.を確定する方式にしている。
 
 export interface CycleRecord {
   no: number
@@ -49,26 +37,30 @@ export interface CycleHistorySlotValues {
 }
 
 /** No.・前回差分の計算に使う永続状態。呼び出し元（usePlcCycleSignals）で
- *  useRef(createCycleHistoryState())として保持し、buildCycleHistoryへ毎回渡す。
- *  これにより、PLCが送ってくる「直近5件」の窓がスライドしても、
- *  一度割り振ったNo.や前回タイムとの比較基準が失われない。 */
+ *  useRef(createCycleHistoryState())として保持し、buildCycleHistoryへ毎回渡す。 */
 export interface CycleHistoryState {
-  /** 開始時刻(ms) → 割り当て済みのNo. */
-  noByStartTime: Map<number, number>
+  /** 物理スロット(1-5) → 直前に見た内容のシグネチャ（変化検知用） */
+  signatureBySlot: Map<number, string>
   /** No. → そのサイクルタイム（秒）。前回差分の算出に使う */
   cycleTimeByNo: Map<number, number>
   /** No. → 整形済み履歴。PLCの5スロットが上書きされても履歴を保持する */
   recordByNo: Map<number, CycleRecord>
+  /** 直前に新規データが書き込まれたと判定した物理スロット（巡回の起点） */
+  lastWrittenSlot: number | null
   /** 次に新規レコードへ割り振るNo. */
   nextNo: number
+  /** 初回ポーリングかどうか（巡回の起点が未確定の間だけtrue） */
+  initialized: boolean
 }
 
 export function createCycleHistoryState(): CycleHistoryState {
   return {
-    noByStartTime: new Map(),
+    signatureBySlot: new Map(),
     cycleTimeByNo: new Map(),
     recordByNo: new Map(),
+    lastWrittenSlot: null,
     nextNo: 1,
+    initialized: false,
   }
 }
 
@@ -85,48 +77,89 @@ function formatClock(d: Date) {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
 }
 
-/** PLCから受け取った直近5件を、発生順（古い→新しい）で整形する。
+/** 順序判定専用のシグネチャ。「同じスロットに同じ内容が2回連続で来ることはPLCの巡回書き込み
+ *  上あり得ない」という前提のもと、内容の変化＝新規書き込みの検知にのみ使う（分単位の時刻を
+ *  含んでいても、変化検知の用途では精度不足にならない）。 */
+function slotSignature(s: CycleHistorySlotValues): string {
+  return [
+    s.startYear, s.startMonth, s.startDay, s.startHour, s.startMinute,
+    s.endYear, s.endMonth, s.endDay, s.endHour, s.endMinute,
+    s.cycleTimeMin, s.cycleTimeSec,
+  ].join('_')
+}
+
+function assignNo(
+  slotValues: CycleHistorySlotValues,
+  startDate: Date,
+  endDate: Date,
+  state: CycleHistoryState
+) {
+  const no = state.nextNo
+  state.nextNo += 1
+
+  const cycleTimeSec = slotValues.cycleTimeMin * 60 + slotValues.cycleTimeSec
+  const prevCycleTimeSec = state.cycleTimeByNo.get(no - 1)
+  const diffFromPrevSec = prevCycleTimeSec !== undefined ? cycleTimeSec - prevCycleTimeSec : null
+
+  state.cycleTimeByNo.set(no, cycleTimeSec)
+  state.recordByNo.set(no, {
+    no,
+    startTime: formatClock(startDate),
+    endTime: formatClock(endDate),
+    cycleTimeSec,
+    diffFromPrevSec,
+  })
+  state.signatureBySlot.set(slotValues.slot, slotSignature(slotValues))
+  state.lastWrittenSlot = slotValues.slot
+}
+
+/** PLCから受け取った直近5件（物理スロット1〜5、巡回書き込み）を、発生順（古い→新しい）で整形する。
  *  No.は一度割り振ったら固定、前回差分は「No.-1」のサイクルタイムとの差。 */
 export function buildCycleHistory(
   slots: CycleHistorySlotValues[],
   state: CycleHistoryState
 ): CycleRecord[] {
-  const withDates = slots
+  const valid = slots
     .map((s) => ({
       slot: s,
       startDate: toDate(s.startYear, s.startMonth, s.startDay, s.startHour, s.startMinute),
       endDate: toDate(s.endYear, s.endMonth, s.endDay, s.endHour, s.endMinute),
     }))
     .filter((x): x is { slot: CycleHistorySlotValues; startDate: Date; endDate: Date } => !!x.startDate && !!x.endDate)
-    .sort((a, b) => a.startDate.getTime() - b.startDate.getTime())
 
-  const records: CycleRecord[] = []
+  if (!state.initialized) {
+    // 初回のみ：巡回の起点がまだ分からないため、開始時刻→スロット番号の順で仮に並べる。
+    // 以降はスロットの巡回順で追跡するので、ここでのズレは初回限りの影響に留まる。
+    valid
+      .slice()
+      .sort((a, b) => a.startDate.getTime() - b.startDate.getTime() || a.slot.slot - b.slot.slot)
+      .forEach(({ slot, startDate, endDate }) => assignNo(slot, startDate, endDate, state))
+    state.initialized = true
+  } else {
+    // 2回目以降：分単位の時刻は同一分に複数サイクルが収まると同着になり得るため順序判定には使わない。
+    // PLCはスロットを1→2→3→4→5→1…と固定順で巡回書き込みするので、
+    // 「内容が変わった＝新規書き込みされた」スロットだけを、前回の書き込み位置からの巡回順で確定させる。
+    const changed = valid.filter(
+      ({ slot }) => state.signatureBySlot.get(slot.slot) !== slotSignature(slot)
+    )
+    const bySlotNo = new Map(changed.map((c) => [c.slot.slot, c]))
 
-  withDates.forEach(({ slot, startDate, endDate }) => {
-    const cycleTimeSec = slot.cycleTimeMin * 60 + slot.cycleTimeSec
-    const key = startDate.getTime()
-
-    let no = state.noByStartTime.get(key)
-    if (no === undefined) {
-      no = state.nextNo
-      state.noByStartTime.set(key, no)
-      state.nextNo += 1
+    let cursor = state.lastWrittenSlot
+    let guard = 0
+    while (bySlotNo.size > 0 && guard < 5) {
+      cursor = cursor === null ? Math.min(...bySlotNo.keys()) : (cursor % 5) + 1
+      const hit = bySlotNo.get(cursor)
+      if (hit) {
+        assignNo(hit.slot, hit.startDate, hit.endDate, state)
+        bySlotNo.delete(cursor)
+      }
+      guard += 1
     }
-    state.cycleTimeByNo.set(no, cycleTimeSec)
-
-    const prevCycleTimeSec = state.cycleTimeByNo.get(no - 1)
-    const diffFromPrevSec = prevCycleTimeSec !== undefined ? cycleTimeSec - prevCycleTimeSec : null
-
-    const record: CycleRecord = {
-      no,
-      startTime: formatClock(startDate),
-      endTime: formatClock(endDate),
-      cycleTimeSec,
-      diffFromPrevSec,
-    }
-    state.recordByNo.set(no, record)
-    records.push(record)
-  })
+    // 想定外に巡回順で消化しきれなかった分のフォールバック（通常は発生しない）
+    Array.from(bySlotNo.values())
+      .sort((a, b) => a.slot.slot - b.slot.slot)
+      .forEach(({ slot, startDate, endDate }) => assignNo(slot, startDate, endDate, state))
+  }
 
   // 古いNo.のエントリはもう参照されないので、メモリが無限に増えないよう間引く
   const cutoff = state.nextNo - 20
@@ -134,16 +167,10 @@ export function buildCycleHistory(
     for (const no of state.cycleTimeByNo.keys()) {
       if (no < cutoff) state.cycleTimeByNo.delete(no)
     }
-    for (const [key, no] of state.noByStartTime) {
-      if (no < cutoff) state.noByStartTime.delete(key)
-    }
     for (const no of state.recordByNo.keys()) {
       if (no < cutoff) state.recordByNo.delete(no)
     }
   }
 
-  // PLCは5スロットを循環利用するため、現在のスナップショットだけを返すと
-  // D15014/D15016へ戻った6件目以降が表示対象から消える。保持済み履歴を返し、
-  // 表示側で最新5件に絞り込む。
   return Array.from(state.recordByNo.values()).sort((a, b) => a.no - b.no)
 }

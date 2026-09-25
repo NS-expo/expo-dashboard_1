@@ -580,7 +580,7 @@
   display: none;
 }
 
-@media (max-width: 1376px) and (hover: none) and (pointer: coarse) {
+@media (max-width: 1376px) {
   .op-results__top-grid {
     grid-template-columns: 1fr;
   }

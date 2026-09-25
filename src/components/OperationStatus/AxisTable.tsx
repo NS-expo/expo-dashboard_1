@@ -29,7 +29,8 @@ interface Props {
   rb1Color: string
   rb2Color: string
   theme: Theme
-  /** 軸ごとの警告状態（モニタ版のaxis-row--warningと共通。省略時は全軸非警告扱い） */
+  /** RB1/RB2ごとの軸別警告状態。省略時は全軸非警告扱い */
+  warningAxesByRobot?: Record<RobotKey, boolean[]>
   warningAxes?: boolean[]
   /** モバイルRB切替で選択中のロボット。nullなら両方とも通常表示 */
   selectedRB?: RobotKey | null
@@ -43,6 +44,7 @@ export default function AxisTable({
   rb1Color,
   rb2Color,
   theme,
+  warningAxesByRobot,
   warningAxes = [],
   selectedRB = null,
 }: Props) {
@@ -83,7 +85,8 @@ export default function AxisTable({
         <tbody>
           {rows.map((row) => {
             // 現在値・Peak値の表記「値%（Peak値%）」はモニタ版（AxisMetricCard）と統一している
-            const isWarning = warningAxes[row.axis - 1] ?? false
+            const rb1IsWarning = warningAxesByRobot?.RB1[row.axis - 1] ?? warningAxes[row.axis - 1] ?? false
+            const rb2IsWarning = warningAxesByRobot?.RB2[row.axis - 1] ?? warningAxes[row.axis - 1] ?? false
             
             return (
               <tr key={row.axis}>
@@ -94,7 +97,7 @@ export default function AxisTable({
                   {row.rb1.speed}%
                 </td>
                 <td
-                  className={isWarning ? 'axis-table__cell--warning' : undefined}
+                  className={rb1IsWarning ? 'axis-table__cell--warning' : undefined}
                   style={{ color: rb1Color, borderColor: theme.border, opacity: rb1Dim ? DIM_OPACITY : 1 }}
                 >
                   {row.rb1.torqueValue}%{' '}
@@ -106,7 +109,7 @@ export default function AxisTable({
                   {row.rb2.speed}%
                 </td>
                 <td
-                  className={isWarning ? 'axis-table__cell--warning' : undefined}
+                  className={rb2IsWarning ? 'axis-table__cell--warning' : undefined}
                   style={{ color: rb2Color, borderColor: theme.border, opacity: rb2Dim ? DIM_OPACITY : 1 }}
                 >
                   {row.rb2.torqueValue}%{' '}

@@ -73,6 +73,19 @@ export function usePlcWebSocket({
     })
   }, [])
 
+  // enabledがfalseになった（アイドル切断・閲覧数上限などで接続を止めた）瞬間に、
+  // 画面に残っていた古いPLCデータやbrowserCountを持ち越さないようにクリアする。
+  // 上位（App.tsx）側でページ内容自体を非表示にしているため必須ではないが、
+  // 「切断＝内部状態も空になる」ことを保証しておくための保険。
+  useEffect(() => {
+    if (!enabled) {
+      setData([])
+      setBrowserCount(null)
+      setStatus('idle')
+      setErrorMessage(null)
+    }
+  }, [enabled])
+
   useEffect(() => {
     if (!enabled) return
 

@@ -44,21 +44,21 @@ export interface AxisAddressSet {
  */
 export const ROBOT_AXIS_ADDRESSES: Record<RobotKey, AxisAddressSet[]> = {
   RB1: [
-    { torque: 15100, peakTorque: 15120, speedCurrent: 15020, speedMax: 15040 }, // S軸
-    { torque: 15102, peakTorque: 15122, speedCurrent: 15022, speedMax: 15042 }, // L軸
-    { torque: 15104, peakTorque: 15124, speedCurrent: 15024, speedMax: 15044 }, // U軸
-    { torque: 15106, peakTorque: 15126, speedCurrent: 15026, speedMax: 15046 }, // R軸
-    { torque: 15108, peakTorque: 15128, speedCurrent: 15028, speedMax: 15048 }, // B軸
-    { torque: 15110, peakTorque: 15130, speedCurrent: 15030, speedMax: 15050 }, // T軸
+    {torque: 15140, peakTorque: 15160, speedCurrent: 15060, speedMax: 15080 }, // S軸
+    { torque: 15142, peakTorque: 15162, speedCurrent: 15062, speedMax: 15082 }, // L軸
+    { torque: 15144, peakTorque: 15164, speedCurrent: 15064, speedMax: 15084 }, // U軸
+    { torque: 15146, peakTorque: 15166, speedCurrent: 15066, speedMax: 15086 }, // B軸
+    { torque: 15148, peakTorque: 15168, speedCurrent: 15068, speedMax: 15088 }, // R軸
+    { torque: 15150, peakTorque: 15170, speedCurrent: 15070, speedMax: 15090  }, // T軸
   ],
 
   RB2: [
-   { torque: 15140, peakTorque: 15160, speedCurrent: 15060, speedMax: 15080 }, // S軸
-   { torque: 15142, peakTorque: 15162, speedCurrent: 15062, speedMax: 15082 }, // L軸
-   { torque: 15144, peakTorque: 15164, speedCurrent: 15064, speedMax: 15084 }, // U軸
-   { torque: 15146, peakTorque: 15166, speedCurrent: 15066, speedMax: 15086 }, // B軸
-   { torque: 15148, peakTorque: 15168, speedCurrent: 15068, speedMax: 15088 }, // R軸
-   { torque: 15150, peakTorque: 15170, speedCurrent: 15070, speedMax: 15090 }, // T軸
+   {torque: 15100, peakTorque: 15120, speedCurrent: 15020, speedMax: 15040 }, // S軸
+   { torque: 15102, peakTorque: 15122, speedCurrent: 15022, speedMax: 15042 }, // L軸
+   { torque: 15104, peakTorque: 15124, speedCurrent: 15024, speedMax: 15044 }, // U軸
+   { torque: 15106, peakTorque: 15126, speedCurrent: 15026, speedMax: 15046 }, // R軸
+   { torque: 15108, peakTorque: 15128, speedCurrent: 15028, speedMax: 15048 }, // B軸
+   { torque: 15110, peakTorque: 15130, speedCurrent: 15030, speedMax: 15050   }, // T軸
  ],
 }
 

@@ -65,7 +65,7 @@ const COMPACT_MAX_WIDTH = 1376
 // 平均トルクバー・ロボット模式図・接続線はモニタ幅専用のため、CSSの display:none に
 // 頼らず、コンパクト表示ではそもそも描画しない（CSSの適用順に左右されないようにする）。
 function useIsCompact() {
-  const query = `(max-width: ${COMPACT_MAX_WIDTH}px) and (hover: none) and (pointer: coarse)`
+  const query = `(max-width: ${COMPACT_MAX_WIDTH}px)`
   const [isCompact, setIsCompact] = useState(
     () => typeof window !== 'undefined' && window.matchMedia(query).matches,
   )
@@ -128,62 +128,67 @@ export default function OperationStatus({
     (name) => axisRows[AXIS_NAMES.indexOf(name)],
   )
 
-  const [warningAxes, setWarningAxes] = useState<boolean[]>(() => Array(axisCount).fill(false))
-  const releaseTimersRef = useRef<Array<number | undefined>>([])
+  const [warningAxesByRobot, setWarningAxesByRobot] = useState<Record<RobotKey, boolean[]>>(() => ({
+    RB1: Array(axisCount).fill(false),
+    RB2: Array(axisCount).fill(false),
+  }))
+  const releaseTimersRef = useRef<Record<RobotKey, Array<number | undefined>>>({
+    RB1: [],
+    RB2: [],
+  })
+  const warningAxes = warningAxesByRobot.RB1.map(
+    (isWarning, index) => isWarning || warningAxesByRobot.RB2[index],
+  )
   const latestRowsRef = useRef(axisRows)
   latestRowsRef.current = axisRows
 
   useEffect(() => {
-    setWarningAxes((previous) => {
-      const next = Array.from({ length: axisCount }, (_, i) => previous[i] ?? false)
-      let changed = false
+    ;(['RB1', 'RB2'] as const).forEach((robot) => {
+      setWarningAxesByRobot((previous) => {
+        const next = [...previous[robot]]
+        let changed = false
 
-      next.forEach((isWarning, index) => {
-        const row = axisRows[index]
-        if (!row) return
-        const values = [
-          row.rb1.torqueValue,
-          row.rb2.torqueValue,
-        ]
-        const reachedWarning = values.some((value) => value >= THRESHOLD)
-        const belowReleaseThreshold = values.every((value) => value <= WARNING_RELEASE_THRESHOLD)
+        next.forEach((isWarning, index) => {
+          const value = axisRows[index]?.[robot === 'RB1' ? 'rb1' : 'rb2'].torqueValue
+          if (value === undefined) return
+          const reachedWarning = value >= THRESHOLD
+          const belowReleaseThreshold = value <= WARNING_RELEASE_THRESHOLD
 
-        if (reachedWarning) {
-          if (releaseTimersRef.current[index] !== undefined) {
-            window.clearTimeout(releaseTimersRef.current[index])
-            releaseTimersRef.current[index] = undefined
-          }
-          if (!isWarning) {
-            next[index] = true
-            changed = true
-          }
-        } else if (isWarning && belowReleaseThreshold && releaseTimersRef.current[index] === undefined) {
-          releaseTimersRef.current[index] = window.setTimeout(() => {
-            const latest = latestRowsRef.current[index]
-            if (!latest) return
-            const latestValues = [
-              latest.rb1.torqueValue,
-              latest.rb2.torqueValue,
-            ]
-            if (latestValues.every((value) => value <= WARNING_RELEASE_THRESHOLD)) {
-              setWarningAxes((current) => {
-                const released = [...current]
-                released[index] = false
-                return released
-              })
+          if (reachedWarning) {
+            if (releaseTimersRef.current[robot][index] !== undefined) {
+              window.clearTimeout(releaseTimersRef.current[robot][index])
+              releaseTimersRef.current[robot][index] = undefined
             }
-            releaseTimersRef.current[index] = undefined
-          }, WARNING_RELEASE_DELAY_MS)
-        }
-      })
+            if (!isWarning) {
+              next[index] = true
+              changed = true
+            }
+          } else if (isWarning && belowReleaseThreshold && releaseTimersRef.current[robot][index] === undefined) {
+            releaseTimersRef.current[robot][index] = window.setTimeout(() => {
+              const latest = latestRowsRef.current[index]
+              const latestValue = latest?.[robot === 'RB1' ? 'rb1' : 'rb2'].torqueValue
+              if (latestValue !== undefined && latestValue <= WARNING_RELEASE_THRESHOLD) {
+                setWarningAxesByRobot((current) => {
+                  const released = [...current[robot]]
+                  released[index] = false
+                  return { ...current, [robot]: released }
+                })
+              }
+              releaseTimersRef.current[robot][index] = undefined
+            }, WARNING_RELEASE_DELAY_MS)
+          }
+        })
 
-      return changed ? next : previous
+        return changed ? { ...previous, [robot]: next } : previous
+      })
     })
   }, [axisCount, axisRows])
 
   useEffect(() => () => {
-    releaseTimersRef.current.forEach((timer) => {
-      if (timer !== undefined) window.clearTimeout(timer)
+    Object.values(releaseTimersRef.current).forEach((timers) => {
+      timers.forEach((timer) => {
+        if (timer !== undefined) window.clearTimeout(timer)
+      })
     })
   }, [])
 
@@ -315,8 +320,6 @@ export default function OperationStatus({
                     maxValue={80}
                     color={rb1Color}
                     label="平均トルク"
-                    reverse
-                    iconOnRight
                   />
                 )}
               </div>
@@ -357,7 +360,7 @@ export default function OperationStatus({
                         side="rb1"
                         data={toSideData(row, 'rb1')}
                         threshold={THRESHOLD}
-                        isWarning={warningAxes[row.axis - 1] ?? false}
+                        isWarning={warningAxesByRobot.RB1[row.axis - 1] ?? false}
                         color={rb1Color}
                         flexGrow={1}
                       />
@@ -373,7 +376,7 @@ export default function OperationStatus({
                         side="rb2"
                         data={toSideData(row, 'rb2')}
                         threshold={THRESHOLD}
-                        isWarning={warningAxes[row.axis - 1] ?? false}
+                        isWarning={warningAxesByRobot.RB2[row.axis - 1] ?? false}
                         color={rb2Color}
                         flexGrow={1}
                       />
@@ -389,22 +392,23 @@ export default function OperationStatus({
                     {connectorLines.map(({ axis, leftPath, rightPath }) => {
                       const name = axis
                       const axisIndex = AXIS_NAMES.indexOf(name)
-                      const isWarning = warningAxes[axisIndex] ?? false
+                      const rb1IsWarning = warningAxesByRobot.RB1[axisIndex] ?? false
+                      const rb2IsWarning = warningAxesByRobot.RB2[axisIndex] ?? false
                       return (
                         <g key={name}>
                         <path
                           d={leftPath}
                           fill="none"
                           vectorEffect="non-scaling-stroke"
-                          className={`axis-monitor__connector-line${isWarning ? ' axis-monitor__connector-line--warning' : ''}`}
-                          style={isWarning ? undefined : { stroke: rb1Color }}
+                          className={`axis-monitor__connector-line${rb1IsWarning ? ' axis-monitor__connector-line--warning' : ''}`}
+                          style={rb1IsWarning ? undefined : { stroke: rb1Color }}
                         />
                         <path
                           d={rightPath}
                           fill="none"
                           vectorEffect="non-scaling-stroke"
-                          className={`axis-monitor__connector-line${isWarning ? ' axis-monitor__connector-line--warning' : ''}`}
-                          style={isWarning ? undefined : { stroke: rb2Color }}
+                          className={`axis-monitor__connector-line${rb2IsWarning ? ' axis-monitor__connector-line--warning' : ''}`}
+                          style={rb2IsWarning ? undefined : { stroke: rb2Color }}
                         />
                         </g>
                       )
@@ -442,6 +446,7 @@ export default function OperationStatus({
                   rb2Color={rb2Color}
                   theme={theme}
                   warningAxes={warningAxes}
+                  warningAxesByRobot={warningAxesByRobot}
                   selectedRB={selectedMobileRB}
                 />
               </>

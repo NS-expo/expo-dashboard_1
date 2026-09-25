@@ -1143,7 +1143,18 @@
 }
 
 /* ===== モバイル・タブレット共通：グラフ／ゲージ→表に切替、縦スクロール許可 ===== */
-@media (max-width: 1376px) and (hover: none) and (pointer: coarse) {
+@media (max-width: 1376px) {
+
+  /* 表がviewport高を超える端末では、ページ側で縦スクロールできるようにする。 */
+  .dashboard-page--operation-status {
+    overflow-y: auto;
+  }
+
+  .dashboard-page--operation-status .op-status {
+    height: auto;
+    min-height: 100%;
+    flex: 0 0 auto;
+  }
 
   .axis-monitor {
     height: auto;
