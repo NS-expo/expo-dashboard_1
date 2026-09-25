@@ -30,7 +30,14 @@ function clampPct(v: number) {
   return Math.min(100, Math.max(0, v))
 }
 
-export default function AverageSpeedGauge({ value, maxValue = 100, color, label, reverse = false, iconOnRight = false }: Props) {
+export default function AverageSpeedGauge({
+  value,
+  maxValue = 100,
+  color,
+  label,
+  reverse = false,
+  iconOnRight = false,
+}: Props) {
   const pct = clampPct((value / maxValue) * 100)
 
   const fillStyle: CSSProperties = {
@@ -44,7 +51,11 @@ export default function AverageSpeedGauge({ value, maxValue = 100, color, label,
   return (
     <div
       className={`speed-gauge${iconOnRight ? ' speed-gauge--icon-right' : ''}`}
-      style={{ borderColor: `${color}55`, boxShadow: `0 0 18px ${color}22` }}
+      style={{
+        borderColor: `${color}55`,
+        boxShadow: `0 0 18px ${color}22`,
+        flexDirection: iconOnRight ? 'row-reverse' : 'row',
+      }}
     >
       <div className="speed-gauge__icon" style={{ color }}>
         {/* ロボットアームのシンプルなシルエットアイコン */}
@@ -72,7 +83,10 @@ export default function AverageSpeedGauge({ value, maxValue = 100, color, label,
         <div className="speed-gauge__label" style={{ color }}>
           {label}
         </div>
-        <div className={`speed-gauge__track${reverse ? ' speed-gauge__track--reverse' : ''}`}>
+        <div
+          className={`speed-gauge__track${reverse ? ' speed-gauge__track--reverse' : ''}`}
+          style={{ justifyContent: reverse ? 'flex-end' : 'flex-start' }}
+        >
           <div className="speed-gauge__fill" style={fillStyle} />
         </div>
       </div>
