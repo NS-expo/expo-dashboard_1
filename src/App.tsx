@@ -636,7 +636,7 @@ export default function App() {
               />
             </div>
 
-            <div className="dashboard-page" style={{ display: currentPage === 'anomaly' ? 'flex' : 'none' }}>
+            <div className="dashboard-page dashboard-page--operation-status" style={{ display: currentPage === 'anomaly' ? 'flex' : 'none' }}>
               <OperationStatus
                 theme={theme}
                 themeMode={mode}

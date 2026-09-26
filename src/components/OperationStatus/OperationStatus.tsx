@@ -61,11 +61,11 @@ interface ConnectorLine {
 // OperationStatus.css のメディアクエリと必ず同じ条件にすること。
 const COMPACT_MAX_WIDTH = 1376
 
-// 画面幅がCOMPACT_MAX_WIDTH以下（モバイル・タブレット）かどうかを返す。
+// 画面幅がCOMPACT_MAX_WIDTH以下でタッチ入力があるか（モバイル・タブレット）を返す。
 // 平均トルクバー・ロボット模式図・接続線はモニタ幅専用のため、CSSの display:none に
 // 頼らず、コンパクト表示ではそもそも描画しない（CSSの適用順に左右されないようにする）。
 function useIsCompact() {
-  const query = `(max-width: ${COMPACT_MAX_WIDTH}px)`
+  const query = `(max-width: ${COMPACT_MAX_WIDTH}px) and (any-pointer: coarse)`
   const [isCompact, setIsCompact] = useState(
     () => typeof window !== 'undefined' && window.matchMedia(query).matches,
   )

@@ -672,7 +672,7 @@
   50% { opacity: 0.55; }
 }
 
-@media (max-width: 1376px) {
+@media (max-width: 1376px) and (any-pointer: coarse) {
   .panel-frame.nameplate-quiz {
     flex: 1 1 auto;
     min-height: 0;

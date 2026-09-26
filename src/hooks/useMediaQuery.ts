@@ -16,7 +16,7 @@ export function useMediaQuery(query: string): boolean {
   return matches
 }
 
-/** スマホ・タブレット（画面幅1376px以下） */
+/** スマホ・タブレット（画面幅1376px以下かつタッチ入力あり） */
 export function useIsMobile(): boolean {
-  return useMediaQuery('(max-width: 1376px)')
+  return useMediaQuery('(max-width: 1376px) and (any-pointer: coarse)')
 }
