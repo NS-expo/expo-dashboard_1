@@ -15,6 +15,9 @@ html, body {
 }
 
 /* Netlifyの埋め込みバッジやステータス要素を全画面で非表示 */
+netlify-badge,
+#nl-badge-frame,
+iframe[title*="Powered by Netlify"],
 iframe[src*="netlify"],
 a[href*="netlify"],
 img[src*="netlify"],

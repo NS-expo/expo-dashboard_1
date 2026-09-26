@@ -121,14 +121,6 @@ function getInitialPage(): PageKey {
   return 'dashboard'
 }
 
-function getDebugBrowserCount(): number | null {
-  if (!import.meta.env.DEV) return null
-  const rawCount = new URLSearchParams(window.location.search).get('debugBrowserCount')
-  if (rawCount === null || !/^\d+$/.test(rawCount)) return null
-  const count = Number(rawCount)
-  return Number.isSafeInteger(count) ? count : null
-}
-
 // アイドル検知：この時間ユーザー操作が無ければPLC接続を切る（Netlify無料枠の閲覧数上限対策）
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000
 const MAX_BROWSER_COUNT = 20
@@ -226,11 +218,9 @@ export default function App() {
 
   const recentDates = getRecentDates(METRIC_DAYS)
   const DATES = recentDates.map((d) => d.label) //['MM/DD', 'MM/DD', 'MM/DD']
-
-  const debugBrowserCount = getDebugBrowserCount()
-  const [browserAdmission, setBrowserAdmission] = useState<'checking' | 'allowed' | 'blocked'>('checking')
-  const { data: plcData, browserCount, status: plcWsStatus } = usePlcWebSocket({
-    enabled: !isIdle && browserAdmission !== 'blocked' && debugBrowserCount === null,
+  
+  const { data: plcData, browserCount } = usePlcWebSocket({
+    enabled: !isIdle, // モバイル版のみ、10分間操作が無ければ接続を切る（モニタ版はisIdleが常にfalseなので影響しない）
     isPlaying: true,
     intervalSec: 0.5,
     selectedAddresses: [
@@ -243,24 +233,11 @@ export default function App() {
       ...DAILY_METRICS_ADDRESSES,
     ],
   })
-  const admissionCount = debugBrowserCount ?? browserCount
-
-  // 初回の人数通知で入場可否を確定する。後から人数が増えても、既に許可した
-  // 20接続を一斉に止めず、新しく接続した上限超過分だけをブロックする。
-  useEffect(() => {
-    setBrowserAdmission((current) => {
-      if (current !== 'checking') return current
-      if (admissionCount !== null) {
-        return admissionCount > MAX_BROWSER_COUNT ? 'blocked' : 'allowed'
-      }
-      return import.meta.env.DEV && plcWsStatus === 'error' ? 'allowed' : current
-    })
-  }, [admissionCount, plcWsStatus])
 
   // 閲覧数上限（Netlify無料枠対策）／アイドル切断。どちらの場合も
   // currentPageに関わらずページ内容そのものを表示しないようにするためのフラグ。
-  const isOverLimit = browserAdmission === 'blocked'
-  const isBlocked = isIdle || browserAdmission !== 'allowed'
+  const isOverLimit = browserCount !== null && browserCount >= MAX_BROWSER_COUNT
+  const isBlocked = isIdle || isOverLimit
 
   const dailyMetrics = usePlcDailyMetricsSignals(plcData)
   const { activeStep } = usePlcJobFlowSignals(plcData)
@@ -468,42 +445,6 @@ export default function App() {
         transition: 'background-color 0.3s, color 0.3s',
       }}
     >
-      {isBlocked ? (
-        <div
-          role="alertdialog"
-          aria-modal="true"
-          aria-live="assertive"
-          style={{
-            position: 'fixed',
-            inset: 0,
-            zIndex: 1000,
-            display: 'grid',
-            placeItems: 'center',
-            padding: '24px',
-            background: theme.bg,
-            color: theme.text,
-          }}
-        >
-          <div
-            style={{
-              width: 'min(100%, 440px)',
-              padding: '24px',
-              border: `1px solid ${theme.border}`,
-              borderRadius: '8px',
-              background: theme.surface,
-              textAlign: 'center',
-              lineHeight: 1.6,
-            }}
-          >
-            {isOverLimit
-              ? `閲覧数が上限（${MAX_BROWSER_COUNT}）を超えているため、ダッシュボードを表示できません。`
-              : isIdle
-                ? '10分間操作がなかったため、WebSocket接続と画面表示を終了しました。再接続するにはページを開き直してください。'
-                : '接続数を確認しています。'}
-          </div>
-        </div>
-      ) : (
-        <>
       {/* スマホを横向きにしたときの操作ブロック案内（CSS側は index.css 参照） */}
       <div className="orientation-lock">
         <span className="orientation-lock__icon" aria-hidden="true">📱</span>
@@ -654,11 +595,9 @@ export default function App() {
                 color: theme.subtext,
               }}
             >
-              {browserAdmission === 'checking'
-                ? '接続数を確認しています。'
-                : isOverLimit
-                  ? `閲覧数が上限（${MAX_BROWSER_COUNT}）を超えているため、画面を表示できません。`
-                  : '10分間操作がなかったため接続を終了しました。再接続するにはQRコードから開き直してください'}
+              {isOverLimit
+                ? `現在の閲覧数が上限（${MAX_BROWSER_COUNT}）に達しているため、画面を表示できません。`
+                : '10分間操作がなかったため接続を終了しました。再接続するにはQRコードから開き直してください'}
             </div>
           </div>
         ) : (
@@ -697,7 +636,7 @@ export default function App() {
               />
             </div>
 
-            <div className="dashboard-page dashboard-page--operation-status" style={{ display: currentPage === 'anomaly' ? 'flex' : 'none' }}>
+            <div className="dashboard-page" style={{ display: currentPage === 'anomaly' ? 'flex' : 'none' }}>
               <OperationStatus
                 theme={theme}
                 themeMode={mode}
@@ -753,8 +692,6 @@ export default function App() {
           <span style={{ marginRight: '15px' }}>ight</span>
         </span>
       </footer>
-        </>
-      )}
     </div>
   )
 }
