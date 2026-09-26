@@ -33,7 +33,7 @@ const SHARED_ROBOT_IMAGE_URL = '/NS-Q3.png'
 // アドレス確定までのフォールバックとしてここに仮の値を置いている（config/robotStatusAddresses.ts 参照）
 
 const SAMPLE_RB1_UTILIZATION = 92
-const SAMPLE_RB2_UTILIZATION = 88
+const SAMPLE_RB2_UTILIZATION = 80
 
 // サイクルタイムはジョブ別・ロボット別ではなく、A・B合算の1つの値として扱う
 const cycleTime = 4.4
