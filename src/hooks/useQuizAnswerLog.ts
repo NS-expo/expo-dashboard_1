@@ -2,9 +2,7 @@
 //
 // 銘板クイズの回答ログを集計するフック。
 // 保存・取得そのものは services/answerLogStore.ts の AnswerLogStore に
-// 委譲している（今は localStorage 実装）。
-// DB版のストアができたら answerLogStore.ts 側を差し替えるだけで、
-// このフック・呼び出し側のコンポーネントは変更不要になる想定。
+// 委譲している。現在はAPI経由で回答ログを取得し、クライアント側で集計する。
 //
 // ストレージ層が非同期（Promiseベース）になったため、
 // logAnswer / getOverallStats / getBreakdown / getDailyCorrectRates /

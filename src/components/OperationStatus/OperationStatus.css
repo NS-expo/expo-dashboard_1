@@ -903,7 +903,8 @@
 .axis-table {
   width: 100%;
   min-width: 480px; /* 5列を確保。画面が狭い場合は横スクロールに任せる */
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   font-size: 20px;
 }
 
@@ -937,6 +938,10 @@
   z-index: 2;
   background: var(--panel-raised, #1b222b);
   box-shadow: 2px 0 4px rgba(0, 0, 0, 0.25);
+}
+
+.axis-table__axis-head {
+  z-index: 3;
 }
 
 /* RB1/RB2の見出し（列見出しに1回だけ表示。以降は色で識別する） */
@@ -1163,6 +1168,16 @@
     min-height: auto;
   }
 
+  .dashboard-page--operation-status .axis-monitor__body {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .dashboard-page--operation-status .axis-monitor__main-col {
+    width: 100%;
+    min-width: 0;
+  }
+
   .axis-monitor {
     flex: 0 0 auto;
     height: auto;
@@ -1231,6 +1246,8 @@
     position: relative;
     display: block;
     flex: 0 0 auto;
+    width: 100%;
+    min-width: 0;
     min-height: 0;
     overflow-x: auto;      /* タブレットは収まれば不要なのでautoに */
     overflow-y: hidden;

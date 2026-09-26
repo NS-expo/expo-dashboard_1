@@ -1,14 +1,7 @@
 // services/answerLogStore.ts
 //
-// 回答ログの「保存の実体」を隠すための層。
-// 今は localStorage 実装（localAnswerLogStore）だけを使っているが、
-// スマホとモニタは別デバイス/別ブラウザなので、localStorage である限り
-// 端末をまたいだ共有は原理的にできない。
-//
-// 後日DBを用意するときは、この AnswerLogStore インターフェースを実装した
-// 別のストア（例: apiAnswerLogStore、下にサンプルを書いてある）を作り、
-// getAnswerLogStore() の中身をそちらに差し替えるだけでよい。
-// useQuizAnswerLog より上のコード（コンポーネント側）は一切変更不要。
+// 回答ログの保存・取得をAPI経由で行う層。
+// 作成者ページとモニタ埋め込みグラフは、同じストアから回答ログを取得する。
 
 import type { QuizAnswerLog } from '../types' 
 

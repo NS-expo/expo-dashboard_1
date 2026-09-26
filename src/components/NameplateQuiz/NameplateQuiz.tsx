@@ -13,10 +13,8 @@ import { useIsMobile } from '../../hooks/useMediaQuery' // ← ここを既存�
 import './NameplateQuiz.css'
 
 // モニタ表示（!isMobile側）でのポーリング間隔。
-// 今はlocalStorageなので実際には同一端末内でしか意味を持たないが、
-// 将来DB接続に切り替えたときに「スマホの回答が自動でモニタに反映される」
-// ようにするための土台として最初から入れておく。
-// 15秒だとAPIへの問い合わせ頻度が高すぎるため、3分に延長。
+// API経由で回答ログを再取得し、別端末からの回答をグラフに反映する。
+// 15秒だとAPIへの問い合わせ頻度が高すぎるため、3分に設定。
 const STATS_POLL_INTERVAL_MS = 3 * 60 * 1000
 
 interface NameplateQuizProps {
@@ -69,8 +67,7 @@ export default function NameplateQuiz({
   setVideoReady(false)
 }, [currentVideoUrl])
 
-  // 累計正解率（サイドのリング表示用）。取得は非同期になったので初回取得＋定期ポーリングで更新する。
-  // DB接続に切り替えたとき、他端末（スマホ）で増えた回答もここで自動的に拾えるようにするため。
+  // 累計正解率（サイドのリング表示用）。初回取得＋定期ポーリングでAPIから更新する。
   useEffect(() => {
     let cancelled = false
     const refresh = () => {
