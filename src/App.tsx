@@ -477,16 +477,9 @@ export default function App() {
             <h2 id="app-blocking-title">ページを表示できません</h2>
             <p id="app-blocking-message" style={{ color: theme.subtext }}>
               {isOverLimit
-                ? `現在の閲覧数が上限（${MAX_BROWSER_COUNT}）に達しています。閲覧可能になってから再読み込みしてください。`
-                : `${idleDurationLabel}操作がなかったため、接続を終了しました。再接続するにはページを再読み込みしてください。`}
+                ? `現在の閲覧数が上限（${MAX_BROWSER_COUNT}）に達しています。`
+                : `${idleDurationLabel}操作がなかったため、接続を終了しました。再接続するにはQRコードを再読み込みしてください。`}
             </p>
-            <button
-              type="button"
-              onClick={() => window.location.reload()}
-              style={{ background: theme.accent }}
-            >
-              再読み込み
-            </button>
           </section>
         </div>
       ) : (
