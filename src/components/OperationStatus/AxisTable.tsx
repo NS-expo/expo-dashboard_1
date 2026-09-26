@@ -19,6 +19,7 @@
 // ・モバイルRB切替（タップした側を強調、もう一方を減光）に対応するため、
 //   selectedRBを受け取り、非選択側の列を減光表示する。
 
+import { useEffect, useRef, useState } from 'react'
 import type { AxisRowData } from './AxisRow'
 import type { Theme } from '../../types'
 import type { RobotKey } from './OperationStatus'
@@ -51,10 +52,35 @@ export default function AxisTable({
   const DIM_OPACITY = 0.35
   const rb1Dim = selectedRB === 'RB2'
   const rb2Dim = selectedRB === 'RB1'
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const [scrollProgress, setScrollProgress] = useState(0)
+
+  useEffect(() => {
+    const scrollElement = scrollRef.current
+    if (!scrollElement) return
+
+    const updateScrollProgress = () => {
+      const maxScroll = scrollElement.scrollWidth - scrollElement.clientWidth
+      setScrollProgress(maxScroll > 0 ? scrollElement.scrollLeft / maxScroll : 0)
+    }
+
+    updateScrollProgress()
+    scrollElement.addEventListener('scroll', updateScrollProgress, { passive: true })
+    const resizeObserver = new ResizeObserver(updateScrollProgress)
+    resizeObserver.observe(scrollElement)
+    const table = scrollElement.querySelector('table')
+    if (table) resizeObserver.observe(table)
+
+    return () => {
+      scrollElement.removeEventListener('scroll', updateScrollProgress)
+      resizeObserver.disconnect()
+    }
+  }, [])
 
   return (
-    <div className="axis-table-scroll">
-      <table className="axis-table">
+    <>
+      <div className="axis-table-scroll" id="axis-table-scroll" ref={scrollRef}>
+        <table className="axis-table">
         <thead>
           <tr>
             <th rowSpan={2} className="axis-table__axis-head" style={{ color: theme.subtext, borderColor: theme.border }}>
@@ -121,7 +147,15 @@ export default function AxisTable({
             )
           })}
         </tbody>
-      </table>
-    </div>
+        </table>
+      </div>
+      <div className="axis-table-scroll-indicator" aria-hidden="true">
+        <span>◀</span>
+        <div className="axis-table-scroll-indicator__track">
+          <span style={{ left: `${scrollProgress * 72}%` }} />
+        </div>
+        <span>▶</span>
+      </div>
+    </>
   )
 }

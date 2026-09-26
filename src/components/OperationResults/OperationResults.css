@@ -39,7 +39,17 @@
   flex-direction: column;
 }
 
+.op-results__scale-stage {
+  position: relative;
+  flex: 0 0 auto;
+  min-height: 100%;
+  width: 100%;
+}
+
 .op-results__scale-inner {
+  position: absolute;
+  top: 0;
+  left: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -581,6 +591,15 @@
 }
 
 @media (max-width: 1376px) and (any-pointer: coarse) {
+  .dashboard-page--operation-results {
+    overflow-y: auto;
+  }
+
+  .dashboard-page--operation-results .op-results__scale-outer {
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+
   .op-results__top-grid {
     grid-template-columns: 1fr;
   }

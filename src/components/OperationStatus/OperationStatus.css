@@ -1255,35 +1255,48 @@
 }
 
 /* ===== 携帯幅のみ：横スクロール前提の表示 ===== */
+.axis-table-scroll-indicator {
+  display: none;
+}
+
 @media (max-width: 640px) {
 
   .axis-table-scroll {
-    overflow-x: scroll;
-    padding-bottom: 14px;
-    scrollbar-width: auto;
-    scrollbar-color: var(--brass, #d6a85f) var(--panel-raised, #1b222b);
+    overflow-x: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
   }
 
-  .axis-table-scroll::before,
-  .axis-table-scroll::after {
-    content: '';
-    position: absolute;
-    left: 8px;
-    bottom: 3px;
+  .axis-table-scroll::-webkit-scrollbar {
+    display: none;
+  }
+
+  .axis-table-scroll-indicator {
+    display: grid;
+    grid-template-columns: 16px minmax(0, 1fr) 16px;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px 0;
+    color: var(--brass, #d6a85f);
+    font-size: 11px;
+    line-height: 1;
+    text-align: center;
+  }
+
+  .axis-table-scroll-indicator__track {
+    position: relative;
     height: 7px;
-    border-radius: 999px;
-    pointer-events: none;
-    z-index: 1;
-  }
-
-  .axis-table-scroll::before {
-    right: 8px;
-    background: var(--panel-raised, #1b222b);
     border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.2));
+    border-radius: 999px;
+    background: var(--panel-raised, #1b222b);
   }
 
-  .axis-table-scroll::after {
+  .axis-table-scroll-indicator__track span {
+    position: absolute;
+    top: 0;
+    bottom: 0;
     width: 28%;
+    border-radius: 999px;
     background: var(--brass, #d6a85f);
   }
 

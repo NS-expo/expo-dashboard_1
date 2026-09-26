@@ -288,6 +288,7 @@ export default function OperationResults({
   const scaleOuterRef = useRef<HTMLDivElement | null>(null)
   const scaleInnerRef = useRef<HTMLDivElement | null>(null)
   const [contentScale, setContentScale] = useState(1)
+  const [contentStageHeight, setContentStageHeight] = useState(0)
 
   const latest = metrics.at(-1)
 
@@ -423,6 +424,10 @@ export default function OperationResults({
         // 下限スケールをデスクトップ（0.55）よりも大幅に低く設定する
         const next = Math.min(Math.max(availableH / naturalH, isMobile ? 0.32 : 0.55), 1.6)
         setContentScale((prev) => (Math.abs(prev - next) > 0.01 ? next : prev))
+        const nextStageHeight = Math.max(availableH, naturalH * next)
+        setContentStageHeight((prev) =>
+          Math.abs(prev - nextStageHeight) > 1 ? nextStageHeight : prev,
+        )
       })
     }
 
@@ -875,14 +880,18 @@ export default function OperationResults({
         <div className="op-results__main-col">
           <div className="op-results__scale-outer" ref={scaleOuterRef}>
             <div
-              className="op-results__scale-inner"
-              ref={scaleInnerRef}
-              style={{
-                transform: `scale(${contentScale})`,
-                width: contentScale !== 1 ? `${100 / contentScale}%` : '100%',
-              }}
+              className="op-results__scale-stage"
+              style={contentStageHeight > 0 ? { height: `${contentStageHeight}px` } : undefined}
             >
-              {isMobile ? (
+              <div
+                className="op-results__scale-inner"
+                ref={scaleInnerRef}
+                style={{
+                  transform: `scale(${contentScale})`,
+                  width: contentScale !== 1 ? `${100 / contentScale}%` : '100%',
+                }}
+              >
+                {isMobile ? (
                 <>
                   {/* モバイル：フローは簡易ボックス表示、各回数・OK/NG・稼働率も同じボックス形式で縦積み
                       （横スクロールKPIやドーナツ／棒・折れ線グラフは可読性のため廃止）。
@@ -909,7 +918,8 @@ export default function OperationResults({
                     {okNgAndBlade}
                   </div>
                 </>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </div>

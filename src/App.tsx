@@ -1,5 +1,5 @@
 // App.tsx（変更なし。参考として全文）
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect,useMemo } from 'react'
 import './App.css'
 import type { ThemeKey, PageKey, NameplateQuestion } from './types'
 import { THEMES, PAGES, getThemeMode } from './components/common/themes'
@@ -121,6 +121,14 @@ function getInitialPage(): PageKey {
   return 'dashboard'
 }
 
+function getDebugIdleSeconds(): number | null {
+  if (!import.meta.env.DEV) return null
+  const rawSeconds = new URLSearchParams(window.location.search).get('debugIdleSeconds')
+  if (rawSeconds === null || !/^\d+$/.test(rawSeconds)) return null
+  const seconds = Number(rawSeconds)
+  return Number.isSafeInteger(seconds) && seconds > 0 ? seconds : null
+}
+
 // アイドル検知：この時間ユーザー操作が無ければPLC接続を切る（Netlify無料枠の閲覧数上限対策）
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000
 const MAX_BROWSER_COUNT = 20
@@ -141,6 +149,9 @@ export default function App() {
   const headerRef = useRef<HTMLElement>(null)
   const mode = getThemeMode(themeKey)
   const isMobile = useIsMobile()
+  const debugIdleSeconds = getDebugIdleSeconds()
+  const idleTimeoutMs = debugIdleSeconds === null ? IDLE_TIMEOUT_MS : debugIdleSeconds * 1000
+  const idleDurationLabel = debugIdleSeconds === null ? '10分間' : `${debugIdleSeconds}秒間`
   const [dashboardStatus, setDashboardStatus] = useState<CameraStatus>('停止')
 
   const STATUS_DOT_COLOR: Record<CameraStatus, string> = {
@@ -162,21 +173,21 @@ export default function App() {
   // モバイル版（来場者のスマホ等での閲覧）に限り、マウス・タッチ・キー操作が無い状態が
   // 続いたらWebSocket接続を停止する。画面消灯・別タブ移動中はブラウザがタイマーを
   // 遅延させるため、最終操作時刻も保存し、画面復帰時にも経過時間を確認する。
-  // 切断後は同じページ内では復帰させず、QRコードなどからページを開き直したときだけ
-  // 新しい接続を開始する。
+  // 切断後は同じページ内では復帰させず、ページを再読み込みしたときだけ新しい接続を開始する。
   const [isIdle, setIsIdle] = useState(false)
+  const [hasReachedBrowserLimit, setHasReachedBrowserLimit] = useState(false)
   const idleTimerRef = useRef<number | undefined>(undefined)
   const lastActivityAtRef = useRef(0)
 
   useEffect(() => {
-    if (!isMobile) {
+    if (!isMobile && debugIdleSeconds === null) {
       // モニタ版では常時接続を維持するため、アイドル判定自体を行わない
       setIsIdle(false)
       return
     }
 
     const markIdleIfExpired = () => {
-      if (Date.now() - lastActivityAtRef.current >= IDLE_TIMEOUT_MS) {
+      if (Date.now() - lastActivityAtRef.current >= idleTimeoutMs) {
         setIsIdle(true)
         return true
       }
@@ -186,7 +197,7 @@ export default function App() {
     const scheduleIdleTimer = () => {
       if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current)
       const remainingMs = Math.max(
-        IDLE_TIMEOUT_MS - (Date.now() - lastActivityAtRef.current),
+        idleTimeoutMs - (Date.now() - lastActivityAtRef.current),
         0,
       )
       idleTimerRef.current = window.setTimeout(markIdleIfExpired, remainingMs)
@@ -214,13 +225,19 @@ export default function App() {
       document.removeEventListener('visibilitychange', checkVisibility)
       if (idleTimerRef.current) window.clearTimeout(idleTimerRef.current)
     }
-  }, [isMobile])
+  }, [debugIdleSeconds, idleTimeoutMs, isMobile])
 
-  const recentDates = getRecentDates(METRIC_DAYS)
-  const DATES = recentDates.map((d) => d.label) //['MM/DD', 'MM/DD', 'MM/DD']
+  const today = new Date()
+  const dayStamp = `${today.getFullYear()}-${today.getMonth()}-${today.getDate()}`
+  const recentDates = useMemo(() => getRecentDates(METRIC_DAYS), [dayStamp])
+  const DATES = useMemo(() => recentDates.map((d) => d.label), [recentDates])
+  const dateOptions = useMemo(
+     () => recentDates.map((d) =>({label: d.label, value: d.key})),
+     [recentDates],
+  )
   
   const { data: plcData, browserCount } = usePlcWebSocket({
-    enabled: !isIdle, // モバイル版のみ、10分間操作が無ければ接続を切る（モニタ版はisIdleが常にfalseなので影響しない）
+    enabled: !isIdle && !hasReachedBrowserLimit,
     isPlaying: true,
     intervalSec: 0.5,
     selectedAddresses: [
@@ -236,8 +253,14 @@ export default function App() {
 
   // 閲覧数上限（Netlify無料枠対策）／アイドル切断。どちらの場合も
   // currentPageに関わらずページ内容そのものを表示しないようにするためのフラグ。
-  const isOverLimit = browserCount !== null && browserCount >= MAX_BROWSER_COUNT
+  const isOverLimit = hasReachedBrowserLimit || (browserCount !== null && browserCount >= MAX_BROWSER_COUNT)
   const isBlocked = isIdle || isOverLimit
+
+  useEffect(() => {
+    if (browserCount !== null && browserCount >= MAX_BROWSER_COUNT) {
+      setHasReachedBrowserLimit(true)
+    }
+  }, [browserCount])
 
   const dailyMetrics = usePlcDailyMetricsSignals(plcData)
   const { activeStep } = usePlcJobFlowSignals(plcData)
@@ -445,6 +468,33 @@ export default function App() {
         transition: 'background-color 0.3s, color 0.3s',
       }}
     >
+      {isBlocked ? (
+        <div className="app-blocking-overlay">
+          <section
+            className="app-blocking-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="app-blocking-title"
+            aria-describedby="app-blocking-message"
+            style={{ background: theme.surface, borderColor: theme.border, color: theme.text }}
+          >
+            <h2 id="app-blocking-title">ページを表示できません</h2>
+            <p id="app-blocking-message" style={{ color: theme.subtext }}>
+              {isOverLimit
+                ? `現在の閲覧数が上限（${MAX_BROWSER_COUNT}）に達しています。閲覧可能になってから再読み込みしてください。`
+                : `${idleDurationLabel}操作がなかったため、接続を終了しました。再接続するにはページを再読み込みしてください。`}
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              style={{ background: theme.accent }}
+            >
+              再読み込み
+            </button>
+          </section>
+        </div>
+      ) : (
+        <>
       {/* スマホを横向きにしたときの操作ブロック案内（CSS側は index.css 参照） */}
       <div className="orientation-lock">
         <span className="orientation-lock__icon" aria-hidden="true">📱</span>
@@ -585,23 +635,7 @@ export default function App() {
 
         {/* ページコンテンツ（4項目）*/}
         {/* 閲覧数上限 or アイドル切断の場合は、currentPageに関わらず内容を一切出さず案内のみ表示する */}
-        {isBlocked ? (
-          <div className="dashboard-page" style={{ display: 'flex' }}>
-            <div
-              className="app-idle-banner"
-              style={{
-                background: theme.surface,
-                border: `1px solid ${theme.border}`,
-                color: theme.subtext,
-              }}
-            >
-              {isOverLimit
-                ? `現在の閲覧数が上限（${MAX_BROWSER_COUNT}）に達しているため、画面を表示できません。`
-                : '10分間操作がなかったため接続を終了しました。再接続するにはQRコードから開き直してください'}
-            </div>
-          </div>
-        ) : (
-          <>
+        <>
             <div className="dashboard-page" style={{ display: currentPage === 'dashboard' ? 'flex' : 'none' }}>
               <RobotArmDashboard
                 theme={theme}
@@ -616,7 +650,7 @@ export default function App() {
               />
             </div>
 
-            <div className="dashboard-page" style={{ display: currentPage === 'control' ? 'flex' : 'none' }}>
+            <div className="dashboard-page dashboard-page--operation-results" style={{ display: currentPage === 'control' ? 'flex' : 'none' }}>
               <OperationResults
                 theme={theme}
                 metrics={liveMetrics}
@@ -636,7 +670,7 @@ export default function App() {
               />
             </div>
 
-            <div className="dashboard-page" style={{ display: currentPage === 'anomaly' ? 'flex' : 'none' }}>
+            <div className="dashboard-page dashboard-page--operation-status" style={{ display: currentPage === 'anomaly' ? 'flex' : 'none' }}>
               <OperationStatus
                 theme={theme}
                 themeMode={mode}
@@ -655,11 +689,10 @@ export default function App() {
                 themeMode={getThemeMode(themeKey)}
                 isAdminOpen={isAdminOpen}
                 onAdminOpenChange={setIsAdminOpen}
-                dateOptions={recentDates.map((d) => ({ label: d.label, value: d.key }))}
+                dateOptions={dateOptions}
               />
             </div>
-          </>
-        )}
+        </>
       </div>
       <footer
         className="app-footer"
@@ -692,6 +725,8 @@ export default function App() {
           <span style={{ marginRight: '15px' }}>ight</span>
         </span>
       </footer>
+        </>
+      )}
     </div>
   )
 }

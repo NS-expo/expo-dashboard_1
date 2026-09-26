@@ -94,3 +94,44 @@
     animation: none;
   }
 }
+
+.app-blocking-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(0, 0, 0, 0.68);
+}
+
+.app-blocking-dialog {
+  width: min(100%, 440px);
+  padding: 24px;
+  border: 1px solid;
+  border-radius: 8px;
+  box-shadow: 0 18px 54px rgba(0, 0, 0, 0.38);
+}
+
+.app-blocking-dialog h2 {
+  margin: 0 0 12px;
+  font-size: 20px;
+  line-height: 1.4;
+}
+
+.app-blocking-dialog p {
+  margin: 0 0 20px;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.app-blocking-dialog button {
+  min-height: 42px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 5px;
+  color: #fff;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
