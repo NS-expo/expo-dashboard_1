@@ -40,6 +40,15 @@
   white-space: nowrap;
 }
 
+.app-header__browser-count {
+  display: inline-flex;
+  align-items: center;
+  margin-right: 10px;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .app-header__status-wrap {
   display: inline-flex;
   align-items: center;

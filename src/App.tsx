@@ -235,7 +235,7 @@ export default function App() {
   )
   
   const [hasReachedBrowserLimit, setHasReachedBrowserLimit] = useState(false)
-  const { data: plcData, browserLimitReached } = usePlcWebSocket({
+  const { data: plcData, browserCount, browserLimitReached } = usePlcWebSocket({
     enabled: !isIdle && !hasReachedBrowserLimit,
     isPlaying: true,
     intervalSec: 0.5,
@@ -535,7 +535,14 @@ export default function App() {
           onMouseEnter={() => setIsGearHover(true)}
           onMouseLeave={() => setIsGearHover(false)}
         >
-          {!isMobile && <LiveClock />}
+          {!isMobile && (
+            <>
+              <span className="app-header__browser-count" title="WebSocket接続中のブラウザー数">
+                接続人数 {browserCount ?? '--'} / {MAX_BROWSER_COUNT}
+              </span>
+              <LiveClock />
+            </>
+          )}
           {statusDot}
           <button
             onClick={(e) => {
