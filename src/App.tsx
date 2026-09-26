@@ -10,7 +10,7 @@ import RobotArmDashboard, { type CameraStatus } from './components/RobotArmDashb
 import OperationStatus from './components/OperationStatus/OperationStatus'
 import NameplateQuiz from './components/NameplateQuiz/NameplateQuiz'
 import LiveClock from './components/OperationStatus/LiveClock'
-import { usePlcWebSocket } from './hooks/usePlcWebSocket'
+import { MAX_BROWSER_COUNT, usePlcWebSocket } from './hooks/usePlcWebSocket'
 import { useIsMobile } from './hooks/useMediaQuery'
 import { usePlcRobotStatusSignals } from './hooks/usePlcRobotStatusSignals'
 import { usePlcOperationMetricsSignals } from './hooks/usePlcOperationMetricsSignals'
@@ -131,7 +131,6 @@ function getDebugIdleSeconds(): number | null {
 
 // アイドル検知：この時間ユーザー操作が無ければPLC接続を切る（Netlify無料枠の閲覧数上限対策）
 const IDLE_TIMEOUT_MS = 10 * 60 * 1000
-const MAX_BROWSER_COUNT = 20
 
 export default function App() {
   const isTouchDevice = !window.matchMedia('(hover: hover)').matches
@@ -175,7 +174,6 @@ export default function App() {
   // 遅延させるため、最終操作時刻も保存し、画面復帰時にも経過時間を確認する。
   // 切断後は同じページ内では復帰させず、ページを再読み込みしたときだけ新しい接続を開始する。
   const [isIdle, setIsIdle] = useState(false)
-  const [hasReachedBrowserLimit, setHasReachedBrowserLimit] = useState(false)
   const idleTimerRef = useRef<number | undefined>(undefined)
   const lastActivityAtRef = useRef(0)
 
@@ -236,7 +234,8 @@ export default function App() {
      [recentDates],
   )
   
-  const { data: plcData, browserCount } = usePlcWebSocket({
+  const [hasReachedBrowserLimit, setHasReachedBrowserLimit] = useState(false)
+  const { data: plcData, browserLimitReached } = usePlcWebSocket({
     enabled: !isIdle && !hasReachedBrowserLimit,
     isPlaying: true,
     intervalSec: 0.5,
@@ -251,16 +250,13 @@ export default function App() {
     ],
   })
 
-  // 閲覧数上限（Netlify無料枠対策）／アイドル切断。どちらの場合も
-  // currentPageに関わらずページ内容そのものを表示しないようにするためのフラグ。
-  const isOverLimit = hasReachedBrowserLimit || (browserCount !== null && browserCount >= MAX_BROWSER_COUNT)
-  const isBlocked = isIdle || isOverLimit
-
   useEffect(() => {
-    if (browserCount !== null && browserCount >= MAX_BROWSER_COUNT) {
-      setHasReachedBrowserLimit(true)
-    }
-  }, [browserCount])
+    if (browserLimitReached) setHasReachedBrowserLimit(true)
+  }, [browserLimitReached])
+
+  // 接続時に上限以上だったWebSocketだけを遮断する。
+  const isOverLimit = hasReachedBrowserLimit || browserLimitReached
+  const isBlocked = isIdle || isOverLimit
 
   const dailyMetrics = usePlcDailyMetricsSignals(plcData)
   const { activeStep } = usePlcJobFlowSignals(plcData)

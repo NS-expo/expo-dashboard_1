@@ -13,6 +13,7 @@ import {
 export type WsStatus = 'idle' | 'connecting' | 'open' | 'closed' | 'error'
 
 const MAX_BUFFER = 50
+export const MAX_BROWSER_COUNT = 20
 
 type Options = {
   enabled: boolean
@@ -40,7 +41,9 @@ export function usePlcWebSocket({
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [data, setData] = useState<DataPoint[]>([])
   const [browserCount, setBrowserCount] = useState<number | null>(null)
+  const [browserLimitReached, setBrowserLimitReached] = useState(false)
   const lastAppendRef = useRef(0)
+  const hasReceivedInitialBrowserCountRef = useRef(false)
   const wsRef = useRef<WebSocket | null>(null)
   const addressesRef = useRef(selectedAddresses)
   const isPlayingRef = useRef(isPlaying)
@@ -98,6 +101,7 @@ export function usePlcWebSocket({
 
     setStatus('connecting')
     setErrorMessage(null)
+    hasReceivedInitialBrowserCountRef.current = false
 
     const ws = new WebSocket(url)
     wsRef.current = ws
@@ -123,7 +127,13 @@ export function usePlcWebSocket({
         (parsed as { type?: string }).type === 'browserCount'
       ) {
         const count = (parsed as { count?: number }).count
-        if (typeof count === 'number') setBrowserCount(count)
+        if (typeof count === 'number') {
+          setBrowserCount(count)
+          if (!hasReceivedInitialBrowserCountRef.current) {
+            hasReceivedInitialBrowserCountRef.current = true
+            setBrowserLimitReached(count >= MAX_BROWSER_COUNT)
+          }
+        }
         return
       }
 
@@ -168,5 +178,5 @@ export function usePlcWebSocket({
     return true
   }, [])
 
-  return { status, errorMessage, data, browserCount, sendWrite } // ★sendWriteを追加
+  return { status, errorMessage, data, browserCount, browserLimitReached, sendWrite } // ★sendWriteを追加
 }
