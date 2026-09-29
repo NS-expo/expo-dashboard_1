@@ -204,6 +204,36 @@
   justify-content: center;
 }
 
+.robot-dashboard__monitor-stage:not(.is-split) > .robot-dashboard__camera-frame--main {
+  position: absolute;
+  inset: 0 0 28px;
+  width: auto;
+  height: auto;
+  visibility: hidden;
+}
+
+.robot-dashboard__monitor-stage:not(.is-split) > .robot-dashboard__camera-frame--main.is-active {
+  visibility: visible;
+}
+
+.robot-dashboard__monitor-stage.is-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+  padding: 12px 12px 40px;
+}
+
+.robot-dashboard__monitor-stage.is-split > .robot-dashboard__camera-frame--main {
+  display: none;
+  width: auto;
+  height: auto;
+  min-height: 0;
+}
+
+.robot-dashboard__monitor-stage.is-split > .robot-dashboard__camera-frame--main.is-active {
+  display: block;
+}
+
 .robot-dashboard__recording-indicator {
   position: absolute;
   left: 10px;
@@ -662,14 +692,14 @@
 /* 横スクロールで1台ずつ切替（スナップ）。表示は常に1台のみ */
 .robot-dashboard__mobile-scroller {
   flex: 0 0 auto;
-  display: flex;
+  display: grid;
   width: 100%;
   min-height: 0;
   overflow: visible;
 }
 
 .robot-dashboard__mobile-page {
-  flex: 0 0 100%;
+  grid-area: 1 / 1;
   width: 100%;
   scroll-snap-align: start;
   display: flex;
@@ -677,6 +707,11 @@
   justify-content: center;
   padding: 4px;
   box-sizing: border-box;
+  visibility: hidden;
+}
+
+.robot-dashboard__mobile-page.is-active {
+  visibility: visible;
 }
 
 .robot-dashboard__mobile-frame {

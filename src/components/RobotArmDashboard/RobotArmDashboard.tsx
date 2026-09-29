@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import type { Theme } from '../../types'
 import PanelFrame from '../common/PanelFrame'
 import { useIsMobile } from '../../hooks/useMediaQuery'
@@ -56,7 +56,7 @@ const MAX_CAMERAS = 8
 
 
 // メイン画面で正常時にカメラを自動切替する間隔
-const ROTATE_INTERVAL_MS = 10000
+const ROTATE_INTERVAL_MS = 300000
 
 // カメラの状態は正常 / 異常の2値で管理する
 // 変更後
@@ -425,10 +425,15 @@ export default function RobotArmDashboard({
             )}
 
             <div className="robot-dashboard__mobile-scroller">
-              {activeCamera && [activeCamera].map(cam => {
+              {cameras.map(cam => {
+                const isActive = cam.id === activeCamera?.id
                 const isAbnormal = cam.status === '異常'
                 return (
-                  <div key={cam.id} className="robot-dashboard__mobile-page">
+                  <div
+                    key={cam.id}
+                    className={`robot-dashboard__mobile-page${isActive ? ' is-active' : ''}`}
+                    aria-hidden={!isActive}
+                  >
                     <div
                       className={`robot-dashboard__mobile-frame${isAbnormal ? ' is-abnormal' : ' is-normal'}`}
                       style={{ borderColor: isAbnormal ? undefined : theme.border }}
@@ -443,29 +448,28 @@ export default function RobotArmDashboard({
         ) : (
           /* --- デスクトップ版：メインカメラモニター + 右端の縦長ステータスカード --- */
           <div className="robot-dashboard__monitor">
-            <div className="robot-dashboard__monitor-stage" style={{ background: canvasBg }}>
-              {isSplitView ? (
-                <div className="robot-dashboard__split-grid">
-                  {abnormalCameras.map(cam => (
-                    <div key={cam.id} className="robot-dashboard__camera-frame is-abnormal">
-                      {renderCameraContent(cam)}
-                    </div>
-                   ))}
-                </div>
-              ) : (
-                <>
-                  {displayCamera && (
-                     <div
-                       className={`robot-dashboard__camera-frame robot-dashboard__camera-frame--main${
-                         singleAbnormalCamera ? ' is-abnormal' : ' is-normal'
-                       }`}
-                       style={{ borderColor: singleAbnormalCamera ? undefined : theme.border }}
-                     >
-                       {renderCameraContent(displayCamera)}
-                     </div>
-                   )}
-                </>
-              )}
+            <div
+              className={`robot-dashboard__monitor-stage${isSplitView ? ' is-split' : ''}`}
+              style={{ background: canvasBg }}
+            >
+              {cameras.map(cam => {
+                const isActive = isSplitView
+                  ? cam.status === '異常'
+                  : cam.id === displayCamera?.id
+                const isAbnormal = cam.status === '異常'
+                return (
+                  <div
+                    key={cam.id}
+                    className={`robot-dashboard__camera-frame robot-dashboard__camera-frame--main${
+                      isAbnormal ? ' is-abnormal' : ' is-normal'
+                    }${isActive ? ' is-active' : ''}`}
+                    style={{ borderColor: isAbnormal ? undefined : theme.border }}
+                    aria-hidden={!isActive}
+                  >
+                    {renderCameraContent(cam)}
+                  </div>
+                )
+              })}
                 <span className="robot-dashboard__recording-indicator" aria-label="録画中">
                   ●REC
                 </span>
@@ -763,15 +767,15 @@ export default function RobotArmDashboard({
     </PanelFrame>
   )
 }
-function CameraVideo({ stream }: { stream: MediaStream }) {
+const CameraVideo = memo(function CameraVideo({ stream }: { stream: MediaStream }) {
   const videoRef = useRef<HTMLVideoElement>(null)
   useEffect(() => {
     if (videoRef.current) videoRef.current.srcObject = stream
   }, [stream])
   return <video ref={videoRef} autoPlay playsInline muted />
-}
+})
 
-function AxisCameraVideo({ streamName }: { streamName: string }) {
+const AxisCameraVideo = memo(function AxisCameraVideo({ streamName }: { streamName: string }) {
   const { stream, error } = useGo2rtcStream(streamName)
   const videoRef = useRef<HTMLVideoElement>(null)
 
@@ -783,4 +787,4 @@ function AxisCameraVideo({ streamName }: { streamName: string }) {
     return <div className="robot-dashboard__camera-placeholder">接続エラー</div>
   }
   return <video ref={videoRef} autoPlay playsInline muted />
-}
+})
